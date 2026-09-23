@@ -23,3 +23,9 @@ Este repositório contém o projeto independente OBS Live Bot. Não reutilizar a
 - Usar `.env` para valores locais e segredos; versionar apenas `.env.example` sem valores sensíveis.
 - Preservar dados persistentes locais em diretórios ignorados pelo Git.
 
+
+## Compatibilidade multiagente
+
+Este é o ponto de entrada do Codex. Antes de implementar, ler `PROJECT.md`, `PROJECT-STATE.md`, `AI-WORKFLOW.md`, `docs/EXECUTION-PLAN.md` e a documentação da task.
+
+O projeto já está em andamento: não recriar fundação, não reexecutar tasks concluídas e não avançar além da task solicitada.

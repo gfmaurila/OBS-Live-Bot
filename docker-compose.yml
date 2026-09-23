@@ -1,0 +1,44 @@
+name: obs-live-bot
+
+services:
+  n8n:
+    image: ${N8N_IMAGE:-n8nio/n8n:latest}
+    container_name: obs-live-bot-n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${N8N_HOST_PORT:-5679}:5678"
+    environment:
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-http://localhost:5679}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5679/}
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-America/Sao_Paulo}
+      TZ: ${TZ:-America/Sao_Paulo}
+      OBS_CONFIG_ROOT: ${OBS_CONFIG_ROOT}
+      OBS_HOST: ${OBS_HOST:-host.docker.internal}
+      OBS_WEBSOCKET_PORT: ${OBS_WEBSOCKET_PORT:-4455}
+      OBS_WEBSOCKET_PASSWORD: ${OBS_WEBSOCKET_PASSWORD}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+      - ./n8n/workflows:/files/workflows
+      - ./n8n/backup:/files/backup
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - obs-live-bot
+
+networks:
+  obs-live-bot:
+    name: obs-live-bot

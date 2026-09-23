@@ -1,0 +1,2 @@
+{"__type":"$$EventMessageAudit","id":"c252a880-6867-4ca4-87a4-b46d45f716f8","ts":"2026-09-22T23:28:02.414-03:00","eventName":"n8n.audit.cluster.instance-joined","message":"n8n.audit.cluster.instance-joined","payload":{"instanceKey":"414e14b0-0f28-457e-91f3-aee431a0bb35","hostId":"main-30c863a2b04b","instanceType":"main","instanceRole":"leader","version":"2.40.5"}}
+{"__type":"$$EventMessageConfirm","confirm":"c252a880-6867-4ca4-87a4-b46d45f716f8","ts":"2026-09-22T23:28:02.414-03:00","source":{"id":"0","name":"eventBus"}}

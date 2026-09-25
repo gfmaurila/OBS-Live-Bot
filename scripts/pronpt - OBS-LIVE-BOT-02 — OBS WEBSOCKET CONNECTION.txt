@@ -1,0 +1,621 @@
+Execute SOMENTE a TASK:
+
+OBS-LIVE-BOT-02 — OBS WEBSOCKET CONNECTION
+
+PROJECT_ROOT:
+D:\Empresa\GFMaurila\projetos\OBS-Live-Bot
+
+OBS_CONFIG_ROOT:
+C:\Users\gfmau\AppData\Roaming\obs-studio
+
+DEPENDÊNCIAS:
+OBS-LIVE-BOT-00 = PASS
+OBS-LIVE-BOT-01 = PASS
+
+INFRAESTRUTURA ATUAL:
+
+OBS Live Bot n8n:
+http://localhost:5679
+container = obs-live-bot-n8n
+
+GFM TruckHub n8n:
+http://localhost:5678
+container = gfm-truckhub-n8n
+
+IMPORTANTE:
+Os projetos são independentes.
+
+==================================================
+OBJETIVO
+==================================================
+
+Estabelecer comunicação segura entre:
+
+OBS Live Bot
+      │
+      ▼
+OBS WebSocket
+      │
+      ▼
+OBS Studio
+
+Nesta TASK implementar SOMENTE:
+
+- descoberta/validação do OBS WebSocket;
+- conexão;
+- autenticação quando necessária;
+- leitura de informações básicas do OBS;
+- detecção de conectado/desconectado;
+- teste de reconexão;
+- documentação da integração.
+
+NÃO implementar ainda detecção de LIVE.
+Isso pertence à OBS-LIVE-BOT-03.
+
+==================================================
+1. PRÉ-FLIGHT
+==================================================
+
+Verificar:
+
+- versão instalada do OBS Studio;
+- disponibilidade do OBS WebSocket;
+- porta configurada;
+- autenticação configurada;
+- se o OBS está executando;
+- se a porta WebSocket está escutando.
+
+OBS WebSocket esperado:
+
+HOST:
+host.docker.internal
+
+PORT:
+4455
+
+IMPORTANTE:
+
+Não assumir que 4455 está correta sem verificar.
+
+Se outra porta estiver configurada no OBS:
+detectar e documentar.
+
+==================================================
+2. REGRA DE PROTEÇÃO DO OBS
+==================================================
+
+NÃO alterar automaticamente arquivos em:
+
+C:\Users\gfmau\AppData\Roaming\obs-studio
+
+A pasta continua READ-ONLY.
+
+NÃO alterar:
+
+- cenas;
+- scene collections;
+- profiles;
+- sources;
+- filtros;
+- áudio;
+- plugins;
+- scripts;
+- hotkeys;
+- streaming;
+- recording;
+- encoder;
+- configurações de saída.
+
+NÃO iniciar transmissão.
+
+NÃO iniciar gravação.
+
+NÃO modificar cenas.
+
+NÃO trocar cena.
+
+==================================================
+3. WEBSOCKET
+==================================================
+
+Utilizar a API oficial do OBS WebSocket compatível com a versão
+instalada do OBS.
+
+Preferir integração pela API WebSocket.
+
+NÃO manipular arquivos internos do OBS para controlar o programa.
+
+Criar camada desacoplada:
+
+IObsClient / ObsClient
+
+ou equivalente apropriado à tecnologia escolhida.
+
+A integração futura não deve ficar acoplada ao n8n.
+
+Arquitetura desejada:
+
+n8n
+ │
+ ▼
+OBS Live Bot Service
+ │
+ ▼
+ObsClient
+ │
+ ▼
+OBS WebSocket
+ │
+ ▼
+OBS Studio
+
+IMPORTANTE:
+
+O n8n é ORQUESTRADOR.
+
+Não colocar toda a lógica de integração com OBS diretamente dentro
+de workflows n8n se isso criar forte acoplamento.
+
+==================================================
+4. CREDENCIAIS
+==================================================
+
+Se OBS WebSocket exigir senha:
+
+NÃO:
+
+- colocar senha no código;
+- colocar senha no docker-compose;
+- colocar senha em README;
+- colocar senha em documentação;
+- versionar senha.
+
+Utilizar variável:
+
+OBS_WEBSOCKET_PASSWORD
+
+armazenada SOMENTE em:
+
+.env
+
+.env permanece ignorado pelo Git.
+
+.env.example deve conter apenas:
+
+OBS_WEBSOCKET_PASSWORD=
+
+Nunca exibir a senha no relatório final.
+
+==================================================
+5. AÇÃO MANUAL PERMITIDA
+==================================================
+
+Se o OBS WebSocket estiver habilitado e exigir uma senha que ainda
+não esteja disponível no projeto:
+
+PARAR somente nesse ponto.
+
+Não desabilitar autenticação.
+
+Não tentar descobrir, extrair ou imprimir a senha.
+
+Informar:
+
+MANUAL ACTION REQUIRED:
+YES
+
+e explicar exatamente onde o usuário deve obter/configurar a senha
+pela interface oficial do OBS.
+
+Depois a TASK poderá continuar.
+
+==================================================
+6. SERVIÇO OBS LIVE BOT
+==================================================
+
+Se ainda não existir serviço próprio para integração, criar a menor
+implementação possível.
+
+Não criar arquitetura excessiva.
+
+O serviço deverá permitir inicialmente:
+
+Connect()
+Disconnect()
+GetVersion()
+GetCurrentProgramScene()
+GetStreamStatus()
+GetRecordStatus()
+
+IMPORTANTE:
+
+GetStreamStatus e GetRecordStatus são somente LEITURA nesta TASK.
+
+NÃO:
+
+StartStream
+StopStream
+StartRecord
+StopRecord
+
+==================================================
+7. HEALTH ENDPOINT
+==================================================
+
+Se a arquitetura possuir serviço HTTP local, disponibilizar endpoint
+simples equivalente a:
+
+GET /health
+
+Resultado esperado:
+
+{
+  "service": "obs-live-bot",
+  "status": "healthy",
+  "obs": "connected"
+}
+
+E endpoint equivalente:
+
+GET /obs/status
+
+Exemplo:
+
+{
+  "connected": true,
+  "obsVersion": "...",
+  "webSocketVersion": "...",
+  "currentScene": "...",
+  "streaming": false,
+  "recording": false
+}
+
+NÃO retornar:
+
+- senha;
+- tokens;
+- secrets.
+
+==================================================
+8. DOCKER
+==================================================
+
+Se for criado um serviço adicional do OBS Live Bot:
+
+integrá-lo ao docker-compose existente.
+
+Manter:
+
+obs-live-bot-n8n
+
+funcionando em:
+
+127.0.0.1:5679
+
+Não alterar:
+
+gfm-truckhub-n8n
+
+O novo serviço deve conseguir acessar o OBS no host Windows.
+
+Utilizar:
+
+host.docker.internal
+
+quando apropriado.
+
+==================================================
+9. TESTES
+==================================================
+
+Criar testes para:
+
+- configuração;
+- ausência de password;
+- conexão recusada;
+- autenticação inválida;
+- OBS offline;
+- OBS online;
+- reconexão;
+- leitura de versão;
+- leitura da cena atual;
+- leitura de stream status;
+- leitura de record status.
+
+Não iniciar stream/gravação durante testes.
+
+==================================================
+10. TESTE REAL
+==================================================
+
+Com OBS aberto:
+
+validar conexão real.
+
+Confirmar:
+
+OBS_CONNECTED = TRUE
+
+Obter por WebSocket:
+
+OBS_VERSION
+WEBSOCKET_VERSION
+CURRENT_PROGRAM_SCENE
+STREAM_STATUS
+RECORD_STATUS
+
+Todos somente leitura.
+
+==================================================
+11. TESTE OBS OFFLINE
+==================================================
+
+Se puder ser realizado sem interromper uma transmissão ou gravação
+existente:
+
+validar comportamento quando OBS estiver indisponível.
+
+O Live Bot NÃO pode:
+
+- crashar;
+- entrar em loop agressivo;
+- gerar logs infinitos.
+
+Deve retornar algo equivalente a:
+
+OBS_CONNECTED = FALSE
+
+Se fechar o OBS puder interferir no uso atual:
+SKIP com justificativa.
+
+==================================================
+12. RECONEXÃO
+==================================================
+
+Implementar estratégia conservadora de reconexão.
+
+Exemplo:
+
+1s
+2s
+5s
+10s
+30s
+
+Limitar intervalo máximo.
+
+Não criar reconexão em loop de milissegundos.
+
+==================================================
+13. LOGS
+==================================================
+
+Registrar:
+
+OBS_CONNECTING
+OBS_CONNECTED
+OBS_DISCONNECTED
+OBS_RECONNECTING
+OBS_AUTH_FAILED
+
+Nunca registrar:
+
+OBS_WEBSOCKET_PASSWORD
+
+==================================================
+14. SEGURANÇA
+==================================================
+
+Executar verificação final:
+
+- .env ignorado;
+- nenhum secret versionado;
+- nenhum password nos logs;
+- nenhuma credencial na documentação.
+
+==================================================
+15. PROTEÇÃO DO N8N EXISTENTE
+==================================================
+
+Confirmar ao final:
+
+obs-live-bot-n8n:
+RUNNING/HEALTHY
+
+http://localhost:5679:
+RESPONDING
+
+Confirmar também:
+
+gfm-truckhub-n8n:
+RUNNING/HEALTHY
+
+http://localhost:5678:
+RESPONDING
+
+Não modificar GFM TruckHub.
+
+==================================================
+16. PROTEÇÃO DO OBS
+==================================================
+
+Comparar novamente o snapshot de:
+
+C:\Users\gfmau\AppData\Roaming\obs-studio
+
+IMPORTANTE:
+
+O próprio OBS pode atualizar arquivos dinâmicos durante inicialização
+e encerramento.
+
+Diferenciar:
+
+A) alterações provocadas pelo funcionamento normal do OBS;
+
+B) alterações realizadas pelo projeto.
+
+O projeto não deve escrever diretamente nessa pasta.
+
+==================================================
+17. DOCUMENTAÇÃO
+==================================================
+
+Atualizar conforme necessário:
+
+README.md
+docs\ARCHITECTURE.md
+docs\OBS-INTEGRATION.md
+docs\EXECUTION-PLAN.md
+docs\SECURITY.md
+
+Documentar o fluxo:
+
+OBS Live Bot
+    ↓
+ObsClient
+    ↓
+OBS WebSocket
+    ↓
+OBS Studio
+
+==================================================
+18. NÃO FAZER
+==================================================
+
+NÃO executar OBS-LIVE-BOT-03.
+
+NÃO implementar:
+
+- monitoramento de live;
+- YouTube;
+- Twitch;
+- Kick;
+- chat;
+- boas-vindas;
+- TTS;
+- IA;
+- resposta automática;
+- alteração de cenas;
+- controle de stream;
+- controle de gravação.
+
+==================================================
+19. QUALITY GATE
+==================================================
+
+Para PASS:
+
+OBS WebSocket disponível:
+PASS
+
+Autenticação:
+PASS
+
+Conexão real:
+PASS
+
+OBS version read:
+PASS
+
+WebSocket version read:
+PASS
+
+Current scene read:
+PASS
+
+Stream status read:
+PASS
+
+Record status read:
+PASS
+
+Reconnect strategy:
+PASS
+
+Unit tests:
+PASS
+
+OBS files directly modified:
+NO
+
+OBS Live Bot n8n:
+HEALTHY
+
+GFM TruckHub:
+UNCHANGED
+
+Secrets committed:
+NO
+
+Se faltar somente uma ação manual de autenticação:
+
+RESULT=PARTIAL
+
+Não contornar autenticação.
+
+==================================================
+20. RESULTADO OBRIGATÓRIO
+==================================================
+
+Responder:
+
+TASK:
+OBS-LIVE-BOT-02 — OBS WEBSOCKET CONNECTION
+
+RESULT:
+PASS / PARTIAL / FAIL
+
+OBS VERSION:
+
+OBS WEBSOCKET VERSION:
+
+OBS WEBSOCKET HOST:
+
+OBS WEBSOCKET PORT:
+
+AUTHENTICATION:
+PASS / FAIL / MANUAL ACTION REQUIRED
+
+OBS CONNECTION:
+PASS / FAIL
+
+CURRENT PROGRAM SCENE:
+
+STREAMING:
+YES / NO
+
+RECORDING:
+YES / NO
+
+RECONNECT STRATEGY:
+PASS / FAIL
+
+UNIT TESTS:
+PASS / FAIL
+
+OBS LIVE BOT N8N:
+HEALTHY / FAIL
+
+GFM TRUCKHUB N8N:
+HEALTHY / FAIL
+
+FILES CREATED:
+
+FILES MODIFIED:
+
+OBS CONFIG DIRECTLY MODIFIED:
+YES / NO
+
+GFM TRUCKHUB MODIFIED:
+YES / NO
+
+SECRETS COMMITTED:
+YES / NO
+
+MANUAL ACTION REQUIRED:
+YES / NO
+
+ISSUES:
+
+NEXT TASK:
+OBS-LIVE-BOT-03 — LIVE STATE DETECTION

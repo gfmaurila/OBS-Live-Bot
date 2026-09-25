@@ -1,31 +1,26 @@
-# AGENTS.md
+# AGENTS.md — Codex
 
-## Escopo
+## Leitura obrigatória
+`PROJECT.md` -> `PROJECT-STATE.md` -> `AI-WORKFLOW.md` -> `docs/ARCHITECTURE.md` -> `docs/EXECUTION-PLAN.md` -> documentação da task.
 
-Este repositório contém o projeto independente OBS Live Bot. Não reutilizar acoplamentos, nomes, credenciais ou configurações do GFM TruckHub.
+## Regra principal
+EXECUTAR SOMENTE A TASK SOLICITADA. Não recriar a fundação e não antecipar módulos futuros.
 
-## Regras obrigatórias
+## Ownership tecnológico
+- **C#/.NET:** núcleo oficial, domínio, Vertical Slices, CQRS, Mediator, Domain Events, API, Command Center, EF Core, configurações, OBS Gateway, backup/restore e coordenação.
+- **Python:** IA/ML, transcrição, análise/processamento de vídeo e áudio, detecção/classificação de momentos e metadata especializada.
+- **C++:** somente quando tecnicamente justificado para integração nativa, plugin/extensão OBS, áudio de baixa latência ou processamento de alto desempenho. Não colocar regra de negócio em C++.
+- **n8n:** orquestração, webhooks, agendas e integrações. Não é núcleo do domínio nem fonte de verdade.
 
-- Tratar `OBS_CONFIG_ROOT` como somente leitura até uma tarefa autorizar explicitamente outro comportamento.
-- Nunca modificar cenas, profiles, plugins, scripts, configurações, áudio, fontes ou scene collections do OBS.
-- Não armazenar senhas, tokens, chaves ou outros segredos no Git.
-- Não instalar software no Windows sem autorização explícita.
-- Não iniciar, encerrar ou reconfigurar o OBS Studio sem autorização explícita.
-- Preferir regras locais determinísticas; IA deve permanecer opcional.
-- Manter conectores de chat, TTS, IA, banco e automação atrás de contratos substituíveis.
-- Não criar workflows funcionais do n8n antes da tarefa correspondente.
+## Padrão C# obrigatório
+ASP.NET Core + Vertical Slice Architecture + CQRS + Mediator + Domain Model + Domain Events + EF Core/Migrations + FluentValidation (ou abstração equivalente aprovada) + Mapping Request/Command/Domain/Response + DI + structured logging.
 
-## Desenvolvimento
+Commands alteram estado; Queries somente leem. Endpoints são finos. Handlers coordenam casos de uso. Regras/invariantes ficam no Domain. Entidades de domínio não são expostas diretamente. Validação deve preferir pipeline do Mediator. Domain Events representam fatos relevantes já ocorridos.
 
-- Implementar somente a task solicitada.
-- Atualizar a documentação relacionada a mudanças arquiteturais.
-- Validar configurações antes de executar serviços.
-- Usar `.env` para valores locais e segredos; versionar apenas `.env.example` sem valores sensíveis.
-- Preservar dados persistentes locais em diretórios ignorados pelo Git.
+## OBS e backup
+`OBS_CONFIG_ROOT` é somente leitura por padrão. Exceção somente para tasks explícitas de Backup/Restore/OBS Configuration. O módulo 06 deve realizar backup integral do diretório OBS do usuário e pode preservar credenciais armazenadas pelo OBS. Backup com segredos deve ser protegido/criptografado e nunca versionado.
 
+Ao fechar `obs64.exe`, o módulo 06 deverá possuir Job/Worker que dispara backup automático integral do OBS, com manifest/checksum, retenção configurável, prevenção de concorrência e preservação do último backup válido.
 
-## Compatibilidade multiagente
-
-Este é o ponto de entrada do Codex. Antes de implementar, ler `PROJECT.md`, `PROJECT-STATE.md`, `AI-WORKFLOW.md`, `docs/EXECUTION-PLAN.md` e a documentação da task.
-
-O projeto já está em andamento: não recriar fundação, não reexecutar tasks concluídas e não avançar além da task solicitada.
+## Segurança
+Nunca hardcode/versione senhas, tokens ou chaves. Logs não devem expor segredos. Não instalar software, iniciar/encerrar/reconfigurar OBS ou escrever no OBS sem autorização da task.

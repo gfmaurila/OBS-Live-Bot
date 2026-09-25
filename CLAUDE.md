@@ -1,17 +1,14 @@
-# CLAUDE.md — OBS Live Bot
+# CLAUDE.md — OBS Live Bot / Live Command Center
 
-Projeto em andamento.
+Leia nesta ordem: `PROJECT.md`, `PROJECT-STATE.md`, `AI-WORKFLOW.md`, `docs/ARCHITECTURE.md`, `docs/EXECUTION-PLAN.md`, documentação relevante e task solicitada.
 
-Leia nesta ordem:
-1. `PROJECT.md`
-2. `PROJECT-STATE.md`
-3. `AI-WORKFLOW.md`
-4. `docs/EXECUTION-PLAN.md`
-5. documentação relevante em `docs/`
-6. task solicitada
+Não recrie scaffold nem reexecute tasks concluídas. Execute somente a task atual.
 
-Não recrie o scaffold nem reexecute tasks concluídas.
+## Arquitetura obrigatória
+C#/.NET é o núcleo: ASP.NET Core, Vertical Slice, CQRS, Mediator, Domain Model, Domain Events, EF Core/Migrations, validação, mapping, DI e structured logging. Python é serviço especializado de IA/mídia. C++ é camada nativa/performance somente com justificativa. n8n é orquestrador.
 
-Execute somente a task atual, preserve alterações existentes, não altere configurações do OBS sem autorização, não versione segredos, mantenha IA opcional e integrações substituíveis.
+Endpoints finos -> mapping -> Command/Query -> Mediator/pipeline -> Handler -> Domain/Infrastructure -> mapping -> Response. Commands alteram estado; Queries não. Domain Events desacoplam efeitos de fatos relevantes.
 
-Ao final, valide e use o relatório PASS/PARTIAL/FAIL definido em `AI-WORKFLOW.md`.
+`OBS_CONFIG_ROOT` é read-only por padrão. Somente tasks explícitas de Backup/Restore/OBS Configuration podem autorizar escrita. O módulo 06 fará backup integral do ambiente OBS do usuário, incluindo credenciais armazenadas quando portáveis, em pacote protegido. Ao encerrar OBS, um Job/Worker deve disparar o backup automático.
+
+A task executável atual continua sendo `OBS-LIVE-BOT-02 — OBS WebSocket Connection`.

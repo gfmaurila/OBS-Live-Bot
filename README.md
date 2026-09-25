@@ -1,55 +1,19 @@
-# OBS Live Bot
+# OBS Live Bot / Live Command Center
 
-Automação local e independente para auxiliar transmissões realizadas com o OBS Studio.
+Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
-Este projeto **não pertence ao GFM TruckHub**. A fundação atual contém somente estrutura, documentação e preparação para a futura execução local do n8n. Nenhuma integração funcional com OBS, chats, TTS ou IA foi implementada.
+## Estado
+`OBS-LIVE-BOT-00` e `OBS-LIVE-BOT-01` concluídas. Próxima task: **OBS-LIVE-BOT-02 — OBS WebSocket Connection**.
 
-## Responsabilidades
+## Arquitetura
+C#/.NET é o núcleo (Vertical Slice, CQRS, Mediator, Domain Events, EF Core, Validation e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador.
 
-- **OBS Studio:** transmissão e composição da live.
-- **OBS WebSocket:** canal de integração controlada com o OBS Studio.
-- **n8n:** orquestração local de eventos e processos.
-- **OBS Live Bot:** regras de automação, filas, cooldowns e decisões.
-- **TTS:** reprodução de voz, em uma etapa futura.
-- **IA:** recurso opcional e substituível, nunca obrigatório para regras locais.
-- **Docker:** infraestrutura local para serviços como o n8n.
+Leia `PROJECT.md`, `PROJECT-STATE.md`, `AI-WORKFLOW.md` e `docs/ARCHITECTURE.md`.
 
-## Estado atual
+## Módulos
+- Live Engine / AI Content Studio
+- Content Engine
+- Live Command Center
+- Configuration, Backup & Restore
 
-Implementado nesta etapa:
-
-- estrutura inicial do projeto;
-- documentação de requisitos e arquitetura;
-- plano incremental de execução;
-- configuração-base do Docker Compose para uso futuro;
-- exemplo de variáveis de ambiente sem segredos.
-
-Não implementado nesta etapa:
-
-- execução do n8n;
-- conexão com OBS WebSocket;
-- alteração de configurações do OBS;
-- conectores de YouTube, Twitch ou Kick;
-- TTS;
-- provedores de IA;
-- workflows funcionais.
-
-## Preparação futura
-
-1. Copiar `.env.example` para `.env`.
-2. Definir localmente `OBS_WEBSOCKET_PASSWORD`.
-3. Manter `.env` fora do Git.
-4. Executar a próxima etapa documentada em `docs/EXECUTION-PLAN.md`.
-
-## n8n local
-
-O n8n do OBS Live Bot usa `http://localhost:5679`, vinculado somente a `127.0.0.1`. A porta 5678 permanece reservada ao n8n independente do GFM TruckHub.
-
-```powershell
-docker compose up -d
-docker compose ps
-docker compose logs -f n8n
-docker compose down
-```
-
-Os dados persistentes ficam em `data\n8n` e não são removidos por `docker compose down`. Não use `docker compose down -v` durante validações de persistência.
+O módulo de backup prevê snapshot integral de `C:\Users\gfmau\AppData\Roaming\obs-studio` e Job automático após o fechamento do OBS.

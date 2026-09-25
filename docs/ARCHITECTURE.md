@@ -1,76 +1,108 @@
-# Arquitetura
+# Arquitetura do Sistema
 
 ## Visão geral
 
 ```text
-Plataformas de chat
-        |
-        v
-Adaptadores de chat -----> Regras do OBS Live Bot -----> Fila / Anti-spam
-                                   |                           |
-                                   v                           v
-                         Orquestração n8n              Adaptador de TTS
-                                   |
-                                   v
-                         Adaptador OBS WebSocket
-                                   |
-                                   v
-                              OBS Studio
-
-                 Provedor de IA opcional
-                           ^
-                           |
-                 Porta de IA substituível
+                 Live Command Center (Windows / C#)
+                            |
+                    ASP.NET Core / CQRS
+                            |
+          +-----------------+------------------+
+          |                 |                  |
+     Live Engine       Content Engine     Config/Backup
+        C#                C# + Python          C#
+          |                 |                  |
+ OBS WebSocket/chat     mídia/IA workers   OBS full backup
+          |                 |                  |
+          +----------- Mediator/Domain --------+
+                            |
+                  Infrastructure adapters
+                  |        |        |
+                 n8n     Python     C++
+             orchestration AI/media native/perf
 ```
 
-## Papéis dos componentes
+## Stack C# oficial
+- ASP.NET Core
+- Vertical Slice Architecture
+- CQRS
+- Mediator
+- Domain Model
+- Domain Events
+- Entity Framework Core + Migrations
+- Validation via pipeline
+- Mapping entre Request/Command/Domain/Response
+- Dependency Injection
+- Structured Logging
 
-| Componente | Responsabilidade |
-|---|---|
-| OBS Studio | Executar a transmissão, cenas, fontes e áudio. |
-| OBS WebSocket | Expor uma interface controlada para consultar estado e enviar comandos ao OBS. |
-| n8n | Orquestrar eventos e integrações locais. |
-| OBS Live Bot | Implementar regras, estados, filas, cooldowns e decisões da automação. |
-| TTS | Converter texto em voz por meio de um adaptador substituível. |
-| IA | Fornecer respostas opcionais quando regras locais não forem suficientes. |
-| Docker | Isolar e executar a infraestrutura local, começando pelo n8n. |
+## Fluxo de slice
+```text
+Endpoint -> Request -> Mapping -> Command/Query -> Mediator
+  -> Validation/Logging/Transaction Behaviors -> Handler
+  -> Domain + Infrastructure -> Mapping -> Response
+```
 
-## Limites arquiteturais
+Commands alteram estado. Queries somente leem. Domain Events representam fatos relevantes já ocorridos e permitem efeitos desacoplados. Endpoints não contêm regra de negócio. Entidades de domínio não são contratos externos.
 
-O núcleo do OBS Live Bot não deve depender diretamente de SDKs específicos. Cada integração deve implementar uma porta estável:
+## Ownership
+### C#/.NET
+Fonte de verdade do domínio, API, Command Center Windows, OBS WebSocket, regras de live, settings, persistência, backup/restore, contratos e coordenação.
 
-- `ChatConnector`: recebe eventos de uma plataforma de chat.
-- `ObsGateway`: consulta estado e envia comandos via OBS WebSocket.
-- `TtsProvider`: sintetiza áudio.
-- `AiProvider`: gera respostas opcionais.
-- `MessageRepository`: persiste estado e histórico necessário.
-- `AutomationEngine`: coordena regras e timers, independentemente do n8n.
+### Python
+Workers especializados: transcrição, IA/ML, análise de áudio/vídeo, detecção/classificação de momentos, geração de metadata e outros workloads do ecossistema Python. Não é dono do domínio/banco principal/configuração global.
 
-Os nomes representam contratos conceituais. Interfaces concretas serão definidas nas tasks de implementação.
+### C++
+Opcional. Somente integração nativa, plugin/extensão OBS, áudio de baixa latência ou processamento pesado com necessidade comprovada. Sem regras de negócio.
 
-## Substituição de componentes
+### n8n
+Orquestra webhooks, schedules e integrações. Não guarda a verdade do domínio e não substitui handlers C#.
 
-- **Plataforma de chat:** adaptadores separados para YouTube, Twitch e Kick.
-- **TTS:** provedor local ou remoto selecionado por configuração.
-- **IA:** provedor desabilitável e substituível, sem lógica obrigatória no núcleo.
-- **Banco:** repositório abstrato, permitindo iniciar com persistência simples e migrar depois.
-- **Automação:** regras do núcleo independentes do n8n, permitindo substituir o orquestrador.
+## Estrutura alvo
+```text
+src/
+  dotnet/
+    ObsLiveBot.CommandCenter/
+    ObsLiveBot.Api/
+    ObsLiveBot.Application/
+    ObsLiveBot.Domain/
+    ObsLiveBot.Infrastructure/
+    ObsLiveBot.Contracts/
+    Features/
+      Obs/
+      Live/
+      Content/
+      Settings/
+      Backup/
+    Shared/
+      CQRS/
+      Behaviors/
+      DomainEvents/
+      Mapping/
+      Results/
+  python/
+    content_engine/
+    ai_engine/
+    shared/
+    tests/
+  cpp/
+    native/
+    audio/
+    media/
+    obs/
+    include/
+    tests/
+n8n/workflows/
+config/schemas/
+data/
+tests/integration/
+tests/e2e/
+```
 
-## Fluxo futuro esperado
+## Módulos
+1. OBS/Live Engine — conexão, estado, chat, fila, anti-spam, TTS, respostas e IA opcional.
+2. Content Engine — ingestão, transcrição, detecção de momentos, cortes, áudio contextual/divertido e conteúdo para YouTube/TikTok/Instagram.
+3. Live Command Center — aplicação visual Windows que centraliza status e configuração de OBS, live, chat, IA/TTS, conteúdo, n8n e backup.
+4. Configuration, Backup & Restore — export/import das configurações do produto e backup/restore integral do ambiente OBS.
 
-1. Um conector normaliza uma mensagem recebida.
-2. O núcleo aplica deduplicação, cooldown, anti-spam e regras locais.
-3. A fila define a ordem de processamento.
-4. O bot identifica boas-vindas, perguntas ou mensagens para TTS.
-5. Quando aplicável, um timer aguarda resposta humana.
-6. Uma resposta automática local é tentada primeiro.
-7. IA pode ser consultada somente se habilitada e necessária.
-8. O áudio é encaminhado ao adaptador de TTS e, depois, ao OBS.
-
-## Segurança por padrão
-
-- `OBS_CONFIG_ROOT` começa como somente leitura e não é montado no container.
-- A integração operacional futura deve usar OBS WebSocket.
-- O n8n do OBS Live Bot é exposto somente em `127.0.0.1:5679`, mantendo-se independente do n8n do GFM TruckHub na porta 5678.
-- Senhas e tokens permanecem em `.env`, nunca no Compose ou no Git.
-- Nenhum workflow funcional é incluído na fundação.
+## Regra OBS_CONFIG_ROOT
+Read-only por padrão. Backup pode ler/copiar toda a árvore. Restore/escrita somente em task explícita, com OBS fechado, validação, backup de segurança e rollback.

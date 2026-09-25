@@ -1,25 +1,27 @@
-# PROJECT — OBS Live Bot
+# PROJECT — OBS Live Bot / Live Command Center
 
 ## Objetivo
-Automação local e independente para auxiliar transmissões realizadas com OBS Studio.
+Plataforma local Windows para OBS Studio que reúne automação de live, chat, TTS, IA opcional, criação de conteúdo, Command Center e backup/restore integral do ambiente OBS do usuário.
+
+## Arquitetura oficial
+O núcleo é C#/.NET com ASP.NET Core, Vertical Slice Architecture, CQRS, Mediator, Domain Model, Domain Events, EF Core/Migrations, validação e mapping. Python é reservado a IA/ML e processamento especializado de mídia. C++ é reservado a integração nativa e workloads de baixa latência/alto desempenho quando houver justificativa técnica. n8n é orquestrador, nunca fonte de verdade do domínio.
 
 ## Estado
 Projeto em andamento. Não reinicializar, recriar a fundação ou reexecutar tasks concluídas sem solicitação explícita.
 
 ## Fonte de verdade
-A documentação existente em `docs/` permanece como fonte de verdade funcional e arquitetural.
+`PROJECT-STATE.md`, `AI-WORKFLOW.md`, `docs/` e a task solicitada.
 
-## Compatibilidade
+## Compatibilidade multi-IA
 - Codex: `AGENTS.md`
 - Claude Code: `CLAUDE.md`
 - GitHub Copilot: `.github/copilot-instructions.md`
 
-Todos obedecem `AI-WORKFLOW.md`, `PROJECT-STATE.md`, `docs/` e a task solicitada.
-
 ## Restrições críticas
 - Projeto independente do GFM TruckHub.
-- Não modificar configuração do OBS sem autorização explícita.
-- Nunca versionar segredos.
-- IA permanece opcional.
-- Integrações permanecem desacopladas/substituíveis.
 - Executar somente a task solicitada.
+- OBS_CONFIG_ROOT permanece somente leitura em tasks normais.
+- Escrita/restauração do OBS somente em task explícita de Backup/Restore/OBS Configuration, com OBS fechado, validação, backup de segurança e rollback.
+- Segredos nunca são versionados no Git.
+- Backups podem e devem preservar credenciais/segredos do ambiente OBS quando disponíveis, mas o pacote deve ser protegido/criptografado.
+- IA permanece opcional e integrações substituíveis.

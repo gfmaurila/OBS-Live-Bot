@@ -34,7 +34,15 @@ public sealed record InteractionResponse(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset CompletedAtUtc,
     long Sequence,
-    string CorrelationId);
+    string CorrelationId,
+    bool TtsFallbackUsed,
+    string? PrimaryTtsErrorCode,
+    bool? TtsSimulated,
+    string? TtsVoice,
+    double? AudioDurationMilliseconds,
+    int? SampleRate,
+    int? BitDepth,
+    int? Channels);
 
 public sealed record InteractionStateResponse(
     string Status,
@@ -50,7 +58,10 @@ public sealed record InteractionStateResponse(
     string AiProvider,
     string AiStatus,
     string? AiModel,
-    string TtsProvider);
+    string TtsProvider,
+    string TtsStatus,
+    string? TtsVoice,
+    string? TtsAudioFormat);
 
 public sealed record InteractionProviderResponse(
     string Kind,
@@ -67,7 +78,9 @@ public sealed record InteractionProviderResponse(
     long BusyRejections,
     double? AverageDurationMilliseconds,
     DateTimeOffset? LastSuccessAtUtc,
-    DateTimeOffset? LastFailureAtUtc);
+    DateTimeOffset? LastFailureAtUtc,
+    string? Voice,
+    string? AudioFormat);
 
 public sealed record InteractionProvidersResponse(IReadOnlyList<InteractionProviderResponse> Providers);
 

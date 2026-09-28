@@ -130,6 +130,7 @@ public sealed class InteractionEndpointTests
         {
             builder.UseEnvironment(environment);
             builder.UseSetting("Interactions:AiProvider", "Development");
+            builder.UseSetting("Interactions:TtsProvider", "Development");
             builder.ConfigureServices(services =>
             {
                 var hostedServices = services

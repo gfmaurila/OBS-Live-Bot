@@ -24,7 +24,7 @@ public sealed class InteractionHealthCheck(
             return HealthCheckResult.Degraded("Configured AI interaction provider is unavailable.");
         }
 
-        if (tts is null || !tts.IsAvailable)
+        if (tts is null || !await tts.CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false))
         {
             return HealthCheckResult.Degraded("Configured TTS provider is unavailable.");
         }

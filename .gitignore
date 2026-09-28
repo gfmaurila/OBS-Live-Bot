@@ -67,3 +67,7 @@ data/n8n/crash.journal
 
 # n8n runtime state (database, credentials, owner configuration, logs and encryption key)
 /data/n8n/
+
+# Local AI/TTS runtime artifacts, downloaded models and generated audio
+/data/runtime/
+/.tmp/

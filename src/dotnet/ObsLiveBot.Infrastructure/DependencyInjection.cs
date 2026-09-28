@@ -106,6 +106,9 @@ public static class DependencyInjection
         services.AddSingleton<IAiInteractionProvider>(provider =>
             provider.GetRequiredService<OllamaAiInteractionProvider>());
         services.AddSingleton<ITextToSpeechProvider, DevelopmentTextToSpeechProvider>();
+        services.AddSingleton<ITtsProcessRunner, TtsProcessRunner>();
+        services.AddSingleton<TtsAudioStore>();
+        services.AddSingleton<ITextToSpeechProvider, PiperTextToSpeechProvider>();
         services.AddSingleton<IInteractionProviderRegistry, InteractionProviderRegistry>();
         services.AddSingleton<IInteractionEventPublisher, NoOpInteractionEventPublisher>();
         services.AddHealthChecks().AddCheck<InteractionHealthCheck>("interactions");

@@ -80,7 +80,12 @@ public sealed record TextToSpeechResult(
     TimeSpan Duration,
     string? ErrorCode,
     string CorrelationId,
-    bool IsSimulated);
+    bool IsSimulated,
+    string? VoiceName = null,
+    TimeSpan? AudioDuration = null,
+    int? SampleRate = null,
+    int? BitDepth = null,
+    int? Channels = null);
 
 public sealed record InteractionResult(
     Guid InteractionId,
@@ -102,7 +107,15 @@ public sealed record InteractionResult(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset CompletedAtUtc,
     long Sequence,
-    string CorrelationId);
+    string CorrelationId,
+    bool TtsFallbackUsed = false,
+    string? PrimaryTtsErrorCode = null,
+    bool? TtsSimulated = null,
+    string? TtsVoice = null,
+    TimeSpan? AudioDuration = null,
+    int? SampleRate = null,
+    int? BitDepth = null,
+    int? Channels = null);
 
 public sealed record InteractionStateSnapshot(
     string Status,
@@ -118,12 +131,29 @@ public sealed record InteractionStateSnapshot(
     string AiProvider,
     string AiStatus,
     string? AiModel,
-    string TtsProvider);
+    string TtsProvider,
+    string TtsStatus,
+    string? TtsVoice,
+    string? TtsAudioFormat);
 
 public sealed record AiProviderRuntimeSnapshot(
     bool Available,
     string Status,
     string? Model,
+    long Requests,
+    long Successes,
+    long Failures,
+    long Timeouts,
+    long BusyRejections,
+    double? AverageDurationMilliseconds,
+    DateTimeOffset? LastSuccessAtUtc,
+    DateTimeOffset? LastFailureAtUtc);
+
+public sealed record TtsProviderRuntimeSnapshot(
+    bool Available,
+    string Status,
+    string? Voice,
+    string? AudioFormat,
     long Requests,
     long Successes,
     long Failures,
@@ -148,4 +178,6 @@ public sealed record InteractionProviderSnapshot(
     long BusyRejections,
     double? AverageDurationMilliseconds,
     DateTimeOffset? LastSuccessAtUtc,
-    DateTimeOffset? LastFailureAtUtc);
+    DateTimeOffset? LastFailureAtUtc,
+    string? Voice = null,
+    string? AudioFormat = null);

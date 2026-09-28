@@ -125,6 +125,55 @@ public sealed class InteractionCoreTests
     }
 
     [Fact]
+    public async Task PiperFailure_UsesConfiguredDevelopmentTtsFallback()
+    {
+        var primary = new FakeTtsProvider(request => new TextToSpeechResult(
+            false, "Piper", "audio/wav", null, TimeSpan.Zero, "TTS_UNAVAILABLE",
+            request.CorrelationId, false, "pt_BR-faber-medium"), "Piper", false);
+        var fallback = new FakeTtsProvider(request => new TextToSpeechResult(
+            true, "Development", "development/simulated", null, TimeSpan.Zero, null,
+            request.CorrelationId, true, "deterministic-development"));
+        var harness = Harness(
+            tts: primary,
+            fallbackTts: fallback,
+            allowDevelopmentTtsFallback: true);
+
+        var result = await harness.Orchestrator.ProcessAsync(
+            Event(), InteractionResponseMode.TextAndVoice, default);
+
+        Assert.Equal(InteractionStatus.Completed, result.Status);
+        Assert.Equal("Development", result.TtsProviderName);
+        Assert.True(result.TtsFallbackUsed);
+        Assert.True(result.TtsSimulated);
+        Assert.Equal("TTS_UNAVAILABLE", result.PrimaryTtsErrorCode);
+        Assert.NotEmpty(result.ResponseText!);
+    }
+
+    [Fact]
+    public async Task PiperFailure_DoesNotFallbackWhenDisabledAndPreservesText()
+    {
+        var primary = new FakeTtsProvider(request => new TextToSpeechResult(
+            false, "Piper", "audio/wav", null, TimeSpan.Zero, "TTS_ENGINE_FAILED",
+            request.CorrelationId, false, "pt_BR-faber-medium"), "Piper", false);
+        var fallback = new FakeTtsProvider(request => new TextToSpeechResult(
+            true, "Development", "development/simulated", null, TimeSpan.Zero, null,
+            request.CorrelationId, true), "Development", true);
+        var harness = Harness(
+            tts: primary,
+            fallbackTts: fallback,
+            allowDevelopmentTtsFallback: false);
+
+        var result = await harness.Orchestrator.ProcessAsync(
+            Event(), InteractionResponseMode.TextAndVoice, default);
+
+        Assert.Equal(InteractionStatus.Failed, result.Status);
+        Assert.Equal("TTS_ENGINE_FAILED", result.ErrorCode);
+        Assert.NotEmpty(result.ResponseText!);
+        Assert.False(result.TtsFallbackUsed);
+        Assert.Equal(0, fallback.Calls);
+    }
+
+    [Fact]
     public async Task PublisherFailure_DoesNotRemoveCompletedInteraction()
     {
         var harness = Harness(eventPublisher: new ThrowingInteractionPublisher());
@@ -326,6 +375,8 @@ public sealed class InteractionCoreTests
         FakeTtsProvider? tts = null,
         FakeAiProvider? fallbackAi = null,
         bool allowDevelopmentFallback = false,
+        FakeTtsProvider? fallbackTts = null,
+        bool allowDevelopmentTtsFallback = false,
         IInteractionEventPublisher? eventPublisher = null,
         RecordingPublisher? mediator = null)
     {
@@ -340,7 +391,9 @@ public sealed class InteractionCoreTests
         tts ??= new FakeTtsProvider(request => new TextToSpeechResult(
             true, "Development", "development/simulated", null, TimeSpan.Zero, null,
             request.CorrelationId, true));
-        var registry = new FakeRegistry(ai, tts, fallbackAi, allowDevelopmentFallback);
+        var registry = new FakeRegistry(
+            ai, tts, fallbackAi, allowDevelopmentFallback,
+            fallbackTts, allowDevelopmentTtsFallback);
         var orchestrator = new InteractionOrchestrator(
             new InteractionDecisionPolicy(options, time),
             new InteractionCooldownTracker(options, time),
@@ -410,13 +463,22 @@ public sealed class InteractionCoreTests
         }
     }
 
-    private sealed class FakeTtsProvider(Func<TextToSpeechRequest, TextToSpeechResult> response)
+    private sealed class FakeTtsProvider(
+        Func<TextToSpeechRequest, TextToSpeechResult> response,
+        string name = "Development",
+        bool isDevelopment = true)
         : ITextToSpeechProvider
     {
         public int Calls { get; private set; }
-        public string Name => "Development";
+        public string Name => name;
+        public string VoiceName => "test-voice";
+        public string AudioFormat => "development/simulated";
         public bool IsAvailable => true;
-        public bool IsDevelopment => true;
+        public bool IsDevelopment => isDevelopment;
+        public TtsProviderRuntimeSnapshot GetRuntimeState() =>
+            new(true, "Ready", VoiceName, AudioFormat, Calls, Calls, 0, 0, 0, 0, null, null);
+        public Task<bool> CheckAvailabilityAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(true);
         public Task<TextToSpeechResult> SynthesizeAsync(
             TextToSpeechRequest request,
             CancellationToken cancellationToken)
@@ -430,7 +492,9 @@ public sealed class InteractionCoreTests
         IAiInteractionProvider ai,
         ITextToSpeechProvider tts,
         IAiInteractionProvider? fallbackAi = null,
-        bool allowDevelopmentFallback = false)
+        bool allowDevelopmentFallback = false,
+        ITextToSpeechProvider? fallbackTts = null,
+        bool allowDevelopmentTtsFallback = false)
         : IInteractionProviderRegistry
     {
         public IAiInteractionProvider GetAiProvider() => ai;
@@ -438,6 +502,9 @@ public sealed class InteractionCoreTests
             (ai.IsDevelopment ? ai : null);
         public bool AllowDevelopmentFallback => allowDevelopmentFallback;
         public ITextToSpeechProvider GetTtsProvider() => tts;
+        public ITextToSpeechProvider? GetDevelopmentTtsProvider() => fallbackTts ??
+            (tts.IsDevelopment ? tts : null);
+        public bool AllowDevelopmentTtsFallback => allowDevelopmentTtsFallback;
         public Task<IReadOnlyList<InteractionProviderSnapshot>> GetProvidersAsync(
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<InteractionProviderSnapshot>>([]);

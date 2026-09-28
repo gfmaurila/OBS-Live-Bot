@@ -1,62 +1,24 @@
-# AI Interaction e Ollama local
+# AI Interaction, Ollama e TTS local
 
-## Escopo das OBS-LIVE-BOT-05 e OBS-LIVE-BOT-06
+## Escopo implementado (Tasks 05–07)
 
-A Task 05 implementou a foundation local e testável para transformar `LiveChatEvent` normalizado em uma decisão `Ignore` ou `Respond`. A Task 06 integrou o Ollama como IA real local sem acoplar Application ao runtime. Não há chatbot real de plataforma, STT, memória persistente, RAG, automação OBS ou Content Engine.
+A foundation recebe eventos normalizados, toma decisão determinística, aplica prevenção de loop/cooldown, monta contexto bounded e executa AI, sanitização, TTS opcional, notificações MediatR, buffer e publisher. Não há integração real de chat de plataforma, STT, memória persistente, RAG, automação/playback OBS ou Content Engine.
 
-## Implementado
+Mensagens comuns são ignoradas por padrão. `!studio` e solicitações do endpoint DEV podem responder. Identidade própria é provider-scoped. O buffer guarda até 100 resultados, oldest eviction e sequência monotônica. O publisher inicial é NoOp.
 
-- `IInteractionOrchestrator` coordena decision policy, cooldown, context builder, AI, sanitizer, TTS opcional, notificações, buffer e publisher.
-- `IInteractionDecisionPolicy` é determinística e não chama IA para decidir.
-- Mensagens vazias, eventos não-message, provider desconhecido, identidade ausente, conteúdo excessivo, bots e identidade própria são ignorados.
-- Mensagens comuns são ignoradas. O comando reservado `!studio` responde com o modo padrão; o endpoint DEV pode solicitar `Text`, `Voice` ou `TextAndVoice` explicitamente.
-- Identidade própria é provider-scoped (`Provider:UserId`); IDs iguais em plataformas diferentes não são inferidos como a mesma identidade.
-- `InteractionCooldownTracker` é thread-safe, bounded e configurável para escopo User, Channel ou Global. O padrão é `Provider + Channel + User`.
-- `InteractionBuffer` é thread-safe, bounded, usa oldest eviction, mantém sequence monotônica e não persiste dados.
-- `InteractionDecidedNotification`, `InteractionCompletedNotification` e `InteractionFailedNotification` usam MediatR oficial.
-- `NoOpInteractionEventPublisher` preserva o ponto de extensão sem depender de n8n, UI ou OBS.
+## IA local
 
-## AI e contexto
+`IAiInteractionProvider` seleciona Ollama em Infrastructure; Application não conhece protocolo HTTP. O modelo principal é `qwen3:4b-instruct-2507-q4_K_M` (~2,5 GB), executado pelo Ollama local. Não há API key nem envio a cloud. `DevelopmentAiInteractionProvider` permanece para testes e fallback explícito, marcado `[DEV AI]`.
 
-`IAiInteractionProvider` não depende de SDK específico. O provider selecionado é `Ollama`; o adapter HTTP e seus detalhes permanecem em Infrastructure. O `DevelopmentAiInteractionProvider`, determinístico e marcado com `[DEV AI]`, continua registrado para testes e fallback configurável e não representa IA real.
+System instructions, contexto e mensagem não confiável do chat permanecem campos/roles separados. O sanitizer de resposta rejeita conteúdo vazio, remove controles inválidos, preserva Unicode e limita caracteres.
 
-O modelo local principal é `qwen3:4b-instruct-2507-q4_K_M` (~2,5 GB), executado pelo Ollama 0.34.4 no Windows host. A escolha privilegia português, modo instruct sem raciocínio exposto, baixa latência e folga na RTX 3060 de 12 GB. O runtime não usa API key nem envia conteúdo a um serviço cloud.
+Ollama usa timeout configurável, cancelamento propagado, concorrência 1 e fila bounded (2 solicitações, espera máxima padrão 2 s). Falhas/overload são controlados; fallback DEV, se habilitado, fica identificado e não mascara indisponibilidade do provider primário no health.
 
-`IInteractionContextBuilder` mantém separados:
+## TTS local
 
-- instruções do sistema;
-- mensagem não confiável do usuário;
-- contexto bounded de respostas recentes;
-- identidade/correlation da interação.
+O provider selecionado é `PiperTextToSpeechProvider`, com voz `pt_BR-faber-medium`, português brasileiro, saída WAV PCM 22.050 Hz, mono, 16-bit. A arquitetura, execução, licença e smoke real estão em [TTS.md](TTS.md). `DevelopmentTextToSpeechProvider` continua registrado para testes e fallback, mas só produz metadados simulados.
 
-Texto do chat como “ignore suas instruções anteriores” permanece `UserMessage` e não modifica estruturalmente `SystemInstructions`. Essa separação é uma foundation de segurança, não uma solução completa para prompt injection.
-
-`IAiResponseSanitizer` rejeita resposta vazia, remove controles inválidos, preserva Unicode/acentuação/emoji e limita a saída por Unicode scalar conforme `MaxResponseCharacters`.
-
-## Configuração
-
-A seção `Interactions` controla enablement, capacidades, limite de resposta, modo padrão, cooldown, providers, contexto, comando reservado, idioma, voz e identidades próprias. Não contém secrets.
-
-Defaults principais:
-
-- buffer: 100;
-- cooldown state: 1000;
-- cooldown: 5 segundos por usuário provider-scoped;
-- AI provider: Ollama;
-- TTS provider: Development;
-- resposta máxima: 500 caracteres.
-
-Configuração Ollama padrão:
-
-- URL host: `http://localhost:11434` (`host.docker.internal` para a API em container);
-- timeout: 45 segundos;
-- temperatura: 0,2;
-- saída: até 160 tokens;
-- concorrência: 1 inferência;
-- fila: até 2 requisições, com espera máxima de 2 segundos;
-- fallback Development: habilitado explicitamente.
-
-O provider propaga `CancellationToken`, aplica timeout próprio e retorna erros controlados para timeout, HTTP, resposta inválida/vazia, indisponibilidade e overload. Métricas locais incluem requests, successes, failures, timeouts, busy rejections, duração média e timestamps de sucesso/falha. A fila e a concorrência são bounded; não existe broker ou fila infinita.
+Piper tem timeout de 20 s, concorrência 1, fila bounded de 2 solicitações e espera máxima de 2 s. Artefatos transitórios usam `data/runtime/tts/`, GUID no nome e cleanup limitado a 100 arquivos/60 minutos. `AllowDevelopmentFallback` é explícito. Se TTS falhar, o texto AI permanece no resultado; fallback e simulação são indicados separadamente, nunca como áudio real.
 
 ## API
 
@@ -65,19 +27,8 @@ O provider propaga `CancellationToken`, aplica timeout próprio e retorna erros 
 - `GET /api/interactions/providers`
 - `POST /api/interactions/dev/test` somente em `Development`
 
-O POST DEV cria um evento sintético e entra pelos mesmos command, validation e orchestrator usados pelo pipeline de aplicação. Payload inválido retorna HTTP 400.
+O endpoint POST usa o mesmo command/validation/orchestrator do pipeline. Com `responseMode: TextAndVoice`, a configuração atual pode exercitar Ollama + Piper reais; a execução gera artefato, sem reprodução automática.
 
-## Failure isolation
+## Estado
 
-Falhas e exceptions de AI ou TTS viram resultados explícitos no buffer. Quando habilitado, o fallback DEV registra `AiFallbackUsed` e `PrimaryAiErrorCode`, preservando a visibilidade da falha primária. Health permanece `Degraded` se o Ollama selecionado estiver indisponível, mesmo que a API, OBS, Chat e n8n continuem operacionais. Falha do publisher ocorre depois do buffering e não remove o resultado.
-
-## Futuro, não implementado
-
-- outros runtimes locais ou provider externo opcional;
-- provider externo opcional;
-- Windows TTS, Piper ou engine real;
-- envio de texto para chat;
-- reprodução de áudio na live;
-- OBS actions, moderação e eventos de monetização;
-- memória persistente, RAG ou vector database;
-- publicação real para n8n, UI, SignalR ou OBS.
+**REAL LOCAL AI: YES. REAL LOCAL TTS: YES. OBS AUDIO PLAYBACK: NOT YET.** Não existe chatbot real de Twitch/YouTube/TikTok nesta foundation; OBS narration/audio routing pertence à Task 08.

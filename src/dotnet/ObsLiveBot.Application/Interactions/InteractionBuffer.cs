@@ -60,6 +60,9 @@ public sealed class InteractionBuffer(IOptions<InteractionOptions> options) : II
         string aiStatus,
         string? aiModel,
         string ttsProvider,
+        string ttsStatus,
+        string? ttsVoice,
+        string? ttsAudioFormat,
         int cooldownEntries,
         int cooldownCapacity)
     {
@@ -80,7 +83,10 @@ public sealed class InteractionBuffer(IOptions<InteractionOptions> options) : II
                 aiProvider,
                 aiStatus,
                 aiModel,
-                ttsProvider);
+                ttsProvider,
+                ttsStatus,
+                ttsVoice,
+                ttsAudioFormat);
         }
     }
 }

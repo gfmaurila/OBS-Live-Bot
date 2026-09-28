@@ -26,6 +26,11 @@ public sealed class InteractionProviderRegistry(
         _ttsProviders.FirstOrDefault(provider =>
             string.Equals(provider.Name, _options.TtsProvider, StringComparison.OrdinalIgnoreCase));
 
+    public ITextToSpeechProvider? GetDevelopmentTtsProvider() =>
+        _ttsProviders.FirstOrDefault(provider => provider.IsDevelopment);
+
+    public bool AllowDevelopmentTtsFallback => _options.Tts.AllowDevelopmentFallback;
+
     public async Task<IReadOnlyList<InteractionProviderSnapshot>> GetProvidersAsync(
         CancellationToken cancellationToken)
     {
@@ -54,25 +59,27 @@ public sealed class InteractionProviderRegistry(
                 state.BusyRejections,
                 state.AverageDurationMilliseconds,
                 state.LastSuccessAtUtc,
-                state.LastFailureAtUtc));
+                state.LastFailureAtUtc,
+                null,
+                null));
         }
 
-        var tts = _ttsProviders.Select(provider => new InteractionProviderSnapshot(
-            "TTS",
-            provider.Name,
-            string.Equals(provider.Name, _options.TtsProvider, StringComparison.OrdinalIgnoreCase),
-            provider.IsAvailable,
-            provider.IsDevelopment,
-            provider.IsAvailable ? "Ready" : "Unavailable",
-            null,
-            0,
-            0,
-            0,
-            0,
-            0,
-            null,
-            null,
-            null));
+        var tts = new List<InteractionProviderSnapshot>(_ttsProviders.Count);
+        foreach (var provider in _ttsProviders)
+        {
+            var selected = string.Equals(provider.Name, _options.TtsProvider, StringComparison.OrdinalIgnoreCase);
+            if (selected)
+            {
+                await provider.CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            var state = provider.GetRuntimeState();
+            tts.Add(new InteractionProviderSnapshot(
+                "TTS", provider.Name, selected, state.Available, provider.IsDevelopment,
+                state.Status, null, state.Requests, state.Successes, state.Failures,
+                state.Timeouts, state.BusyRejections, state.AverageDurationMilliseconds,
+                state.LastSuccessAtUtc, state.LastFailureAtUtc, state.Voice, state.AudioFormat));
+        }
         return ai.Concat(tts).ToArray();
     }
 }

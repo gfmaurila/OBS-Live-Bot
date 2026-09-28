@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-06` estão concluídas. A conexão OBS, Live State, Live Chat Ingestion, a fundação de interações e a IA local Ollama possuem estado bounded em memória, validação, health checks e APIs controladas.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-07` estão concluídas. A conexão OBS, Live State, Live Chat Ingestion, IA local Ollama e TTS local Piper possuem estado bounded em memória, validação, health checks e APIs controladas.
 
 ## Serviços locais
 
@@ -46,14 +46,15 @@ Senha: `GfmStudioOS@Dev2026`
 
 Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages`, `/api/chat/events`, `/api/interactions/state`, `/api/interactions/recent` e `/api/interactions/providers`.
 
-## AI Interaction e TTS — Foundation
+## AI Interaction e TTS
 
 O subsistema de interações processa eventos normalizados pelo mesmo pipeline de decisão, cooldown, contexto, AI, sanitização, TTS, notificações MediatR, buffer bounded e publisher. Mensagens comuns não recebem resposta automática: nesta etapa, respostas ocorrem somente por solicitação explícita do endpoint DEV ou pelo comando reservado `!studio`.
 
 - `DevelopmentAiInteractionProvider` é determinístico, local e identificado pelo prefixo `[DEV AI]`. Ele **não é uma IA real**.
-- `DevelopmentTextToSpeechProvider` retorna somente metadados simulados. Ele **não gera nem reproduz áudio real**.
+- `DevelopmentTextToSpeechProvider` continua disponível para testes e fallback; ele retorna metadados simulados e não gera áudio real.
 - `OllamaAiInteractionProvider` usa IA real local; `DevelopmentAiInteractionProvider` permanece disponível para testes e fallback explícito.
-- Engines TTS reais e providers externos ainda não estão configurados.
+- `PiperTextToSpeechProvider` gera WAV PCM real localmente com a voz `pt_BR-faber-medium` (português brasileiro, 22.050 Hz, mono, PCM 16-bit).
+- **REAL LOCAL AI: YES. REAL LOCAL TTS: YES. OBS AUDIO PLAYBACK: NOT YET.** Nenhum áudio é reproduzido ou roteado automaticamente para o OBS; isso permanece fora da Task 07.
 - Nenhuma API paga, banco, broker, cache distribuído ou novo container é necessário.
 - O endpoint `/api/interactions/dev/test` só é registrado quando `ASPNETCORE_ENVIRONMENT=Development`.
 
@@ -70,7 +71,7 @@ Exemplo de teste DEV:
 }
 ```
 
-O resultado `TextAndVoice` confirma a passagem pelo provider TTS DEV, mas não cria arquivo de áudio nem reproduz som na live. Consulte `docs/AI-INTERACTIONS.md` e `docs/TTS.md`.
+Com `Interactions:TtsProvider=Piper`, `TextAndVoice` usa Ollama e Piper pelo pipeline normal e grava um artefato WAV em `data/runtime/tts/`. O provider e o resultado real/fallback são identificáveis nas APIs de interações. Consulte `docs/AI-INTERACTIONS.md` e `docs/TTS.md`.
 
 ## IA local
 
@@ -102,7 +103,17 @@ Content-Type: application/json
 }
 ```
 
-Esse endpoint continua entrando no pipeline normal; com `Interactions:AiProvider=Ollama`, a resposta informa `aiProviderName: Ollama` e o modelo efetivamente usado. Timeout, concorrência (`1` inferência), fila bounded (`2`) e limite de tokens são configuráveis. `AllowDevelopmentFallback=true` permite fallback identificado ao provider determinístico DEV quando o Ollama falha; a indisponibilidade do Ollama continua visível como `Degraded`. O fallback DEV não é IA real. TTS permanece simulado e nenhum áudio é reproduzido.
+Esse endpoint continua entrando no pipeline normal; com `Interactions:AiProvider=Ollama` e `Interactions:TtsProvider=Piper`, a resposta usa IA e voz locais reais. Ollama tem concorrência 1 e fila bounded; Piper tem concorrência 1, espera bounded, timeout e fallback Development explicitamente configurável. Falhas permanecem identificadas e não descartam o texto da IA. O fallback Development não é IA/áudio real.
+
+## TTS local
+
+- Engine: Piper 1.2.0, runtime Linux x86_64 usado pelo serviço API em Docker Compose; artefatos locais são montados em `/opt/tts-engine` somente para leitura.
+- Voz: `pt_BR-faber-medium`, português brasileiro; saída WAV PCM, 22.050 Hz, mono, 16-bit.
+- Para verificar: `GET /api/interactions/providers` (disponibilidade segura), e dentro do container `piper --version`; os artefatos ficam em `data/runtime/tts-engine/` e não são versionados.
+- Smoke test completo: no ambiente Development, enviar `POST /api/interactions/dev/test` com `responseMode: TextAndVoice`; consultar `GET /api/interactions/recent` para o resultado e metadados do WAV. Isso não reproduz áudio.
+- Áudios transitórios ficam em `data/runtime/tts/`; limpeza bounded: até 100 arquivos e retenção máxima de 60 minutos.
+- Fallback para `DevelopmentTextToSpeechProvider` é habilitado explicitamente; quando usado, o resultado indica simulação e não deve ser tratado como áudio real.
+- Limitação de distribuição: a licença de redistribuição do modelo de voz não está confirmada; não incluir a voz em distribuição do StudioOS sem análise jurídica/licenciamento independente. Detalhes e fontes em `docs/TTS.md`.
 
 ## Arquitetura
 C#/.NET 10 é o núcleo (ASP.NET Core, Vertical Slice, CQRS, MediatR oficial, Ardalis.Result, FluentValidation, Serilog, OpenAPI, Domain Events e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador local.

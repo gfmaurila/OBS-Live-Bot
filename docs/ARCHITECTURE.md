@@ -201,7 +201,9 @@ LiveChatEvent / DEV request
 
 - Mensagens comuns são ignoradas por padrão; `!studio` e solicitações DEV explícitas podem responder.
 - `SystemInstructions` e `UserMessage` permanecem campos estruturalmente separados.
-- `DevelopmentAiInteractionProvider` e `DevelopmentTextToSpeechProvider` são adapters determinísticos, locais e simulados; não representam IA ou áudio reais.
+- `DevelopmentAiInteractionProvider` e `DevelopmentTextToSpeechProvider` continuam como adapters determinísticos para testes/fallback; não representam IA ou áudio reais.
+- `IAiInteractionProvider` seleciona Ollama local; `ITextToSpeechProvider` seleciona Piper local real ou Development. Implementações concretas, HTTP/processos e configuração pertencem a Infrastructure.
+- Piper recebe texto sanitizado por stdin e argumentos separados, aplica timeout/cancelamento e concorrência/fila bounded e gera WAV temporário em diretório dedicado. O InteractionBuffer guarda metadados/caminho, não blobs de áudio.
 - O buffer padrão mantém 100 resultados, com oldest eviction e sequence monotônica. Cooldown também é thread-safe, bounded e provider-scoped.
 - Falhas de AI, TTS e publisher são representadas no resultado/buffer sem derrubar OBS, chat, API ou n8n.
 - Não há memória persistente, banco, Redis, broker, cloud, execução automática de OBS ou reprodução automática de áudio.
@@ -225,4 +227,6 @@ Infrastructure: InteractionProviderRegistry
 - Timeout e cancelamento chegam ao `HttpClient`; erros não derrubam API, OBS, Chat ou n8n.
 - O fallback Development é configurável, aparece no `InteractionResult` e nunca mascara o health `Degraded` do provider principal.
 - Estado/health expõem disponibilidade, modelo e contadores sem prompts, conteúdo do usuário ou secrets.
-- TTS permanece Development, sem áudio real ou reprodução no OBS.
+- A voz selecionada é `pt_BR-faber-medium`; saída WAV PCM 22.050 Hz, mono, 16-bit. Estado do provider e resultado/fallback são identificados sem expor caminhos internos desnecessários.
+- Piper indisponível degrada apenas Interactions. Fallback Development, quando habilitado, é identificado e não invalida o texto AI.
+- **REAL LOCAL AI: YES; REAL LOCAL TTS: YES; OBS AUDIO PLAYBACK: NOT YET.** Roteamento/playback no OBS não faz parte da Task 07.

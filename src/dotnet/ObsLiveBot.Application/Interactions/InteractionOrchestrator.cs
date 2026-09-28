@@ -85,55 +85,22 @@ public sealed class InteractionOrchestrator(
         }
 
         TextToSpeechResult? ttsResult = null;
+        var ttsFallbackUsed = false;
+        string? primaryTtsErrorCode = null;
         if (decision.RequestedResponseMode is InteractionResponseMode.Voice or InteractionResponseMode.TextAndVoice)
         {
-            var ttsProvider = providers.GetTtsProvider();
-            if (ttsProvider is null || !ttsProvider.IsAvailable)
-            {
-                return await FailAsync(
-                    decision,
-                    "TTS_PROVIDER_UNAVAILABLE",
-                    cancellationToken,
-                    aiResponse.ProviderName,
-                    aiResponse.ModelName,
-                    true,
-                    aiResponse.Duration,
-                    responseText: sanitized.Text,
-                    aiFallbackUsed: aiOutcome.FallbackUsed,
-                    primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
-            }
-
-            try
-            {
-                ttsResult = await ttsProvider.SynthesizeAsync(
-                    new TextToSpeechRequest(
-                        decision.DecisionId,
-                        sanitized.Text!,
-                        options.Value.Voice,
-                        options.Value.Language,
-                        decision.CorrelationId),
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                logger.LogWarning(
-                    "INTERACTION_TTS_FAILED interactionId={InteractionId} provider={Provider} errorType={ErrorType}",
+            var ttsOutcome = await GenerateTtsAsync(
+                new TextToSpeechRequest(
                     decision.DecisionId,
-                    ttsProvider.Name,
-                    exception.GetType().Name);
-                return await FailAsync(
-                    decision,
-                    "TTS_PROVIDER_EXCEPTION",
-                    cancellationToken,
-                    aiResponse.ProviderName,
-                    aiResponse.ModelName,
-                    true,
-                    aiResponse.Duration,
-                    ttsProvider.Name,
-                    responseText: sanitized.Text,
-                    aiFallbackUsed: aiOutcome.FallbackUsed,
-                    primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
-            }
+                    sanitized.Text!,
+                    options.Value.Voice ?? options.Value.Tts.Voice,
+                    options.Value.Language,
+                    decision.CorrelationId),
+                decision,
+                cancellationToken).ConfigureAwait(false);
+            ttsResult = ttsOutcome.Response;
+            ttsFallbackUsed = ttsOutcome.FallbackUsed;
+            primaryTtsErrorCode = ttsOutcome.PrimaryErrorCode;
 
             if (!ttsResult.Success)
             {
@@ -152,7 +119,15 @@ public sealed class InteractionOrchestrator(
                     ttsResult.AudioFormat,
                     ttsResult.AudioPath,
                     aiOutcome.FallbackUsed,
-                    aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
+                    aiOutcome.PrimaryErrorCode,
+                    ttsFallbackUsed,
+                    primaryTtsErrorCode,
+                    ttsResult.IsSimulated,
+                    ttsResult.VoiceName,
+                    ttsResult.AudioDuration,
+                    ttsResult.SampleRate,
+                    ttsResult.BitDepth,
+                    ttsResult.Channels).ConfigureAwait(false);
             }
         }
 
@@ -176,7 +151,15 @@ public sealed class InteractionOrchestrator(
             decision.CreatedAtUtc,
             timeProvider.GetUtcNow(),
             decision.Sequence,
-            decision.CorrelationId);
+            decision.CorrelationId,
+            ttsFallbackUsed,
+            primaryTtsErrorCode,
+            ttsResult?.IsSimulated,
+            ttsResult?.VoiceName,
+            ttsResult?.AudioDuration,
+            ttsResult?.SampleRate,
+            ttsResult?.BitDepth,
+            ttsResult?.Channels);
         await CompleteAsync(completed, cancellationToken).ConfigureAwait(false);
         return completed;
     }
@@ -196,7 +179,15 @@ public sealed class InteractionOrchestrator(
         string? audioFormat = null,
         string? audioPath = null,
         bool aiFallbackUsed = false,
-        string? primaryAiErrorCode = null) =>
+        string? primaryAiErrorCode = null,
+        bool ttsFallbackUsed = false,
+        string? primaryTtsErrorCode = null,
+        bool? ttsSimulated = null,
+        string? ttsVoice = null,
+        TimeSpan? audioDuration = null,
+        int? sampleRate = null,
+        int? bitDepth = null,
+        int? channels = null) =>
         new(
             decision.DecisionId,
             decision,
@@ -217,7 +208,15 @@ public sealed class InteractionOrchestrator(
             decision.CreatedAtUtc,
             timeProvider.GetUtcNow(),
             decision.Sequence,
-            decision.CorrelationId);
+            decision.CorrelationId,
+            ttsFallbackUsed,
+            primaryTtsErrorCode,
+            ttsSimulated,
+            ttsVoice,
+            audioDuration,
+            sampleRate,
+            bitDepth,
+            channels);
 
     private async Task<InteractionResult> FailAsync(
         InteractionDecision decision,
@@ -234,7 +233,15 @@ public sealed class InteractionOrchestrator(
         string? audioFormat = null,
         string? audioPath = null,
         bool aiFallbackUsed = false,
-        string? primaryAiErrorCode = null)
+        string? primaryAiErrorCode = null,
+        bool ttsFallbackUsed = false,
+        string? primaryTtsErrorCode = null,
+        bool? ttsSimulated = null,
+        string? ttsVoice = null,
+        TimeSpan? audioDuration = null,
+        int? sampleRate = null,
+        int? bitDepth = null,
+        int? channels = null)
     {
         var failed = CreateResult(
             decision,
@@ -251,7 +258,15 @@ public sealed class InteractionOrchestrator(
             audioFormat,
             audioPath,
             aiFallbackUsed,
-            primaryAiErrorCode);
+            primaryAiErrorCode,
+            ttsFallbackUsed,
+            primaryTtsErrorCode,
+            ttsSimulated,
+            ttsVoice,
+            audioDuration,
+            sampleRate,
+            bitDepth,
+            channels);
         buffer.Add(failed);
         await mediator.Publish(new InteractionFailedNotification(failed), cancellationToken)
             .ConfigureAwait(false);
@@ -323,8 +338,75 @@ public sealed class InteractionOrchestrator(
         string modelName = "Unavailable") =>
         new(null, providerName, modelName, TimeSpan.Zero, false, errorCode, request.CorrelationId, false);
 
+    private async Task<TtsGenerationOutcome> GenerateTtsAsync(
+        TextToSpeechRequest request,
+        InteractionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        var primary = providers.GetTtsProvider();
+        if (primary is null)
+        {
+            return new TtsGenerationOutcome(
+                FailedTtsResponse(request, "TTS_PROVIDER_UNAVAILABLE"), false, null);
+        }
+
+        var primaryResponse = await GenerateTtsSafelyAsync(primary, request, decision, cancellationToken)
+            .ConfigureAwait(false);
+        if (primaryResponse.Success || primary.IsDevelopment || !providers.AllowDevelopmentTtsFallback)
+        {
+            return new TtsGenerationOutcome(primaryResponse, false, null);
+        }
+
+        var fallback = providers.GetDevelopmentTtsProvider();
+        if (fallback is null || ReferenceEquals(fallback, primary))
+        {
+            return new TtsGenerationOutcome(primaryResponse, false, null);
+        }
+
+        logger.LogWarning(
+            "INTERACTION_TTS_FALLBACK interactionId={InteractionId} primaryProvider={PrimaryProvider} primaryError={PrimaryError} fallbackProvider={FallbackProvider}",
+            decision.DecisionId, primary.Name, primaryResponse.ErrorCode, fallback.Name);
+        var fallbackResponse = await GenerateTtsSafelyAsync(fallback, request, decision, cancellationToken)
+            .ConfigureAwait(false);
+        return new TtsGenerationOutcome(fallbackResponse, true, primaryResponse.ErrorCode);
+    }
+
+    private async Task<TextToSpeechResult> GenerateTtsSafelyAsync(
+        ITextToSpeechProvider provider,
+        TextToSpeechRequest request,
+        InteractionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await provider.SynthesizeAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                "INTERACTION_TTS_FAILED interactionId={InteractionId} provider={Provider} errorType={ErrorType}",
+                decision.DecisionId, provider.Name, exception.GetType().Name);
+            return FailedTtsResponse(
+                request, "TTS_PROVIDER_EXCEPTION", provider.Name, provider.AudioFormat, provider.VoiceName);
+        }
+    }
+
+    private static TextToSpeechResult FailedTtsResponse(
+        TextToSpeechRequest request,
+        string errorCode,
+        string providerName = "Unavailable",
+        string audioFormat = "none",
+        string? voiceName = null) =>
+        new(false, providerName, audioFormat, null, TimeSpan.Zero, errorCode,
+            request.CorrelationId, false, voiceName);
+
     private sealed record AiGenerationOutcome(
         AiInteractionResponse Response,
+        bool FallbackUsed,
+        string? PrimaryErrorCode);
+
+    private sealed record TtsGenerationOutcome(
+        TextToSpeechResult Response,
         bool FallbackUsed,
         string? PrimaryErrorCode);
 

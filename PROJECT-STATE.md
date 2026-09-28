@@ -17,9 +17,10 @@ IN_PROGRESS
 - OBS-LIVE-BOT-04.3 — owner local de desenvolvimento do n8n configurado no banco persistido correto, sem recriar volume, alterar encryption key, workflows ou credentials.
 - OBS-LIVE-BOT-05 — foundation local de AI Interaction e TTS: decisão determinística, prevenção de loop, cooldown e buffers bounded, providers DEV, isolamento de falhas, MediatR, health e APIs validados.
 - OBS-LIVE-BOT-06 — IA real local com Ollama: provider Infrastructure substituível, modelo `qwen3:4b-instruct-2507-q4_K_M`, timeout/cancelamento, concorrência e overload bounded, fallback DEV explícito, métricas/health e smoke test real validados.
+- OBS-LIVE-BOT-07 — TTS local real com Piper 1.2.0 e voz `pt_BR-faber-medium`: artefato WAV PCM validado e pipeline Ollama + Piper exercitado sem playback OBS; provider DEV, fallback, timeout/cancelamento, concorrência, overload, armazenamento e cleanup bounded preservados.
 
 ## Próxima task executável
-Nenhuma task posterior deve ser iniciada automaticamente. A próxima execução exige solicitação explícita.
+OBS-LIVE-BOT-08 — OBS Narration & Audio Routing é a próxima task, mas não deve ser iniciada automaticamente. A próxima execução exige solicitação explícita.
 
 ## Decisão arquitetural permanente
 O projeto adota `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST`, `NO PREMATURE INFRASTRUCTURE` e `NO PREMATURE MICROSERVICES`. SQL Server não faz parte da stack obrigatória. EF Core permanece disponível somente quando houver necessidade concreta de persistência e sem provider obrigatório.

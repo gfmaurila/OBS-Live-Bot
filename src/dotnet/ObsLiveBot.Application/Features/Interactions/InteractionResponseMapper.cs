@@ -37,5 +37,13 @@ internal static class InteractionResponseMapper
         result.CreatedAtUtc,
         result.CompletedAtUtc,
         result.Sequence,
-        result.CorrelationId);
+        result.CorrelationId,
+        result.TtsFallbackUsed,
+        result.PrimaryTtsErrorCode,
+        result.TtsSimulated,
+        result.TtsVoice,
+        result.AudioDuration?.TotalMilliseconds,
+        result.SampleRate,
+        result.BitDepth,
+        result.Channels);
 }

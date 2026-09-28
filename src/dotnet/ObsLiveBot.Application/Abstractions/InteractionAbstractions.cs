@@ -18,6 +18,7 @@ public sealed class InteractionOptions
     public string TtsProvider { get; set; } = "Development";
     public bool AllowDevelopmentFallback { get; set; } = true;
     public OllamaInteractionOptions Ollama { get; set; } = new();
+    public PiperTtsOptions Tts { get; set; } = new();
     public int ContextMessageLimit { get; set; } = 5;
     public string ReservedCommandPrefix { get; set; } = "!studio";
     public string SystemInstructions { get; set; } =
@@ -27,6 +28,22 @@ public sealed class InteractionOptions
     public string Language { get; set; } = "pt-BR";
     public string? Voice { get; set; }
     public string[] SelfIdentities { get; set; } = [];
+}
+
+public sealed class PiperTtsOptions
+{
+    public string ExecutablePath { get; set; } = "/opt/tts-engine/piper/piper";
+    public string ModelPath { get; set; } = "/opt/tts-engine/voices/pt_BR-faber-medium.onnx";
+    public string Voice { get; set; } = "pt_BR-faber-medium";
+    public string OutputDirectory { get; set; } = "/app/data/runtime/tts";
+    public int TimeoutSeconds { get; set; } = 20;
+    public int MaxInputCharacters { get; set; } = 500;
+    public int MaxFiles { get; set; } = 100;
+    public int MaxAgeMinutes { get; set; } = 60;
+    public int MaxConcurrentRequests { get; set; } = 1;
+    public int MaxQueuedRequests { get; set; } = 2;
+    public int QueueWaitTimeoutSeconds { get; set; } = 2;
+    public bool AllowDevelopmentFallback { get; set; } = true;
 }
 
 public sealed class OllamaInteractionOptions
@@ -92,8 +109,12 @@ public interface IAiInteractionProvider
 public interface ITextToSpeechProvider
 {
     string Name { get; }
+    string VoiceName { get; }
+    string AudioFormat { get; }
     bool IsAvailable { get; }
     bool IsDevelopment { get; }
+    TtsProviderRuntimeSnapshot GetRuntimeState();
+    Task<bool> CheckAvailabilityAsync(CancellationToken cancellationToken);
     Task<TextToSpeechResult> SynthesizeAsync(
         TextToSpeechRequest request,
         CancellationToken cancellationToken);
@@ -105,6 +126,8 @@ public interface IInteractionProviderRegistry
     IAiInteractionProvider? GetDevelopmentAiProvider();
     bool AllowDevelopmentFallback { get; }
     ITextToSpeechProvider? GetTtsProvider();
+    ITextToSpeechProvider? GetDevelopmentTtsProvider();
+    bool AllowDevelopmentTtsFallback { get; }
     Task<IReadOnlyList<InteractionProviderSnapshot>> GetProvidersAsync(CancellationToken cancellationToken);
 }
 
@@ -122,6 +145,9 @@ public interface IInteractionBuffer
         string aiStatus,
         string? aiModel,
         string ttsProvider,
+        string ttsStatus,
+        string? ttsVoice,
+        string? ttsAudioFormat,
         int cooldownEntries,
         int cooldownCapacity);
 }

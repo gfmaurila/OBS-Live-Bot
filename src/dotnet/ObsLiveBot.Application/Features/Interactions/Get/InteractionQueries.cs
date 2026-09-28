@@ -34,7 +34,9 @@ public sealed class GetInteractionStateQueryHandler(
         var aiAvailable = ai is not null &&
             await ai.CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false);
         var aiState = ai?.GetRuntimeState();
-        var ttsAvailable = tts?.IsAvailable == true;
+        var ttsAvailable = tts is not null &&
+            await tts.CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false);
+        var ttsState = tts?.GetRuntimeState();
         var state = buffer.GetState(
             options.Value.Enabled,
             aiAvailable,
@@ -43,6 +45,9 @@ public sealed class GetInteractionStateQueryHandler(
             aiState?.Status ?? "Unavailable",
             aiState?.Model,
             tts?.Name ?? options.Value.TtsProvider,
+            ttsState?.Status ?? "Unavailable",
+            ttsState?.Voice,
+            ttsState?.AudioFormat,
             cooldown.Count,
             cooldown.Capacity);
         return Result.Success(new InteractionStateResponse(
@@ -59,7 +64,10 @@ public sealed class GetInteractionStateQueryHandler(
             state.AiProvider,
             state.AiStatus,
             state.AiModel,
-            state.TtsProvider));
+            state.TtsProvider,
+            state.TtsStatus,
+            state.TtsVoice,
+            state.TtsAudioFormat));
     }
 }
 
@@ -102,7 +110,9 @@ public sealed class GetInteractionProvidersQueryHandler(IInteractionProviderRegi
                 provider.BusyRejections,
                 provider.AverageDurationMilliseconds,
                 provider.LastSuccessAtUtc,
-                provider.LastFailureAtUtc))
+                provider.LastFailureAtUtc,
+                provider.Voice,
+                provider.AudioFormat))
             .ToArray();
         return Result.Success(new InteractionProvidersResponse(response));
     }

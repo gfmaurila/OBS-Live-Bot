@@ -32,6 +32,9 @@ services:
       Interactions__Ollama__BaseUrl: http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data/runtime/tts-engine:/opt/tts-engine:ro
+      - ./data/runtime/tts:/app/data/runtime/tts
     networks:
       - obs-live-bot
 

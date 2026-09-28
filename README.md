@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-04` estão concluídas. A conexão OBS, Live State e a fundação local de Live Chat Ingestion possuem estado em memória, lifecycle isolado, validação, deduplicação, health checks e APIs read-only.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-04.3` estão concluídas. A conexão OBS, Live State e a fundação local de Live Chat Ingestion possuem estado em memória, lifecycle isolado, validação, deduplicação, health checks e APIs read-only.
 
 ## Serviços locais
 
@@ -13,6 +13,18 @@ Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engin
 | OBS Live Bot Swagger | `http://localhost:5080/swagger` |
 | OBS Live Bot Swagger UI | `http://localhost:5080/swagger/index.html` |
 | OBS Live Bot n8n | `http://localhost:5679` |
+
+## n8n — Desenvolvimento
+
+URL: `http://localhost:5679`
+
+### Owner local de desenvolvimento
+
+Email: `dev@gfmstudio.local`
+
+Senha: `GfmStudioOS@Dev2026`
+
+> **ATENÇÃO:** esta é uma credencial conhecida destinada exclusivamente ao ambiente LOCAL de desenvolvimento do GFM StudioOS. Nunca reutilizar esta senha em produção ou em uma instância exposta externamente.
 
 ## Endpoints da API
 

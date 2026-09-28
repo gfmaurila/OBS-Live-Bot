@@ -3,6 +3,12 @@
 ## Segredos de execução
 `.env` e variantes locais ficam fora do Git. Nunca hardcode/versione tokens, senhas ou chaves. Logs não registram segredos.
 
+### Credencial conhecida do n8n local
+
+A credencial DEV conhecida da conta `dev@gfmstudio.local`, documentada no `README.md`, é uma exceção intencional e limitada exclusivamente à instância LOCAL de desenvolvimento do GFM StudioOS. Ela não pode ser reutilizada em produção, staging público, servidor remoto, ambiente exposto à Internet ou instalação com dados reais/sensíveis.
+
+Qualquer allowlist de secret scan deve corresponder somente a esse valor exato no contexto documental autorizado. Não é permitido excluir globalmente o `README.md`, padrões de senha ou outros arquivos. `.env`, chaves de criptografia/assinatura do n8n, tokens, API keys e credenciais reais continuam proibidos no Git.
+
 ## Chave de criptografia do n8n
 
 - `N8N_ENCRYPTION_KEY` deve ser gerada com CSPRNG e existir somente no `.env` local ignorado.

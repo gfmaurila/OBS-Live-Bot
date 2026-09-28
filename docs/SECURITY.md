@@ -15,6 +15,14 @@
 ## Backups OBS
 O requisito funcional é preservar integralmente o ambiente OBS do usuário, inclusive credenciais que estejam armazenadas dentro de `OBS_CONFIG_ROOT` e sejam copiáveis. Portanto, backups podem conter segredos e devem ser tratados como artefatos sensíveis: criptografia/proteção, acesso restrito, integridade e exclusão do Git.
 
+## Incidente do histórico n8n
+
+O segredo do n8n anteriormente presente em `data/n8n/config` foi tratado como comprometido, rotacionado e removido do histórico Git. O histórico local e as refs ativas do remote foram reescritos em 2026-09-28. O estado de runtime `data/n8n/` e o `.env` permanecem locais e ignorados pelo Git.
+
+Objetos antigos ainda podem ser retidos temporariamente pelo provedor de hospedagem em caches, backups, forks ou garbage collection internos; a reescrita garante que o histórico comprometido não seja alcançável pelas refs ativas auditadas. Nenhum valor antigo ou novo deve ser copiado para documentação.
+
+Clones criados antes da sanitização não devem fazer pull ou merge do histórico antigo. Prefira um clone novo. Quando houver trabalho local legítimo a preservar, reaplique cuidadosamente apenas esses commits sobre o clone limpo, sem reintroduzir o histórico comprometido.
+
 ## OBS_CONFIG_ROOT
 `C:\Users\gfmau\AppData\Roaming\obs-studio` é read-only em tasks normais. Backup pode ler/copiar. Restore/escrita exige task explícita, OBS fechado, validação, snapshot de segurança e rollback.
 

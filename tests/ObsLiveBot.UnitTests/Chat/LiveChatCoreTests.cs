@@ -41,7 +41,7 @@ public sealed class LiveChatCoreTests
     [Fact]
     public void ProviderTypes_AreExplicit()
     {
-        Assert.Equal(["Unknown", "Twitch", "YouTube", "TikTok"], Enum.GetNames<LiveChatProviderType>());
+        Assert.Equal(["Unknown", "Twitch", "YouTube", "TikTok", "Development"], Enum.GetNames<LiveChatProviderType>());
     }
 
     [Fact]

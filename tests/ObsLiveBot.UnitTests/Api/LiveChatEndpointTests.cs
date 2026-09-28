@@ -82,6 +82,17 @@ public sealed class LiveChatEndpointTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task ChatMessages_DevelopmentProviderIsNotExposedAsRealChatProvider()
+    {
+        await using var factory = new ApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/chat/messages?provider=Development&limit=20");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("Twitch")]
     [InlineData("YouTube")]

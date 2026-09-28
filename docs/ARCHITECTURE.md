@@ -181,3 +181,28 @@ Twitch / YouTube / TikTok / futuros providers
 - O buffer padrão contém 500 eventos e remove o mais antigo ao atingir a capacidade.
 - Mensagens e eventos compartilham o mesmo armazenamento; endpoints aplicam filtros de leitura.
 - Não existe persistência, database, Redis, broker, novo microservice ou integração cloud.
+
+## AI Interaction & TTS Foundation (OBS-LIVE-BOT-05)
+
+```text
+LiveChatEvent / DEV request
+  -> FluentValidation + MediatR command
+     -> deterministic decision policy
+        -> provider-scoped loop prevention
+        -> bounded in-memory cooldown
+           -> bounded context builder
+              -> selected AI provider
+                 -> response sanitizer
+                    -> selected TTS provider when requested
+                       -> MediatR notifications
+                          -> bounded interaction buffer
+                             -> IInteractionEventPublisher
+```
+
+- Mensagens comuns são ignoradas por padrão; `!studio` e solicitações DEV explícitas podem responder.
+- `SystemInstructions` e `UserMessage` permanecem campos estruturalmente separados.
+- `DevelopmentAiInteractionProvider` e `DevelopmentTextToSpeechProvider` são adapters determinísticos, locais e simulados; não representam IA ou áudio reais.
+- O buffer padrão mantém 100 resultados, com oldest eviction e sequence monotônica. Cooldown também é thread-safe, bounded e provider-scoped.
+- Falhas de AI, TTS e publisher são representadas no resultado/buffer sem derrubar OBS, chat, API ou n8n.
+- Não há memória persistente, banco, Redis, broker, cloud, execução automática de OBS ou reprodução automática de áudio.
+- `IInteractionEventPublisher` usa `NoOpInteractionEventPublisher`; integrações com n8n, UI, SignalR e OBS permanecem futuras.

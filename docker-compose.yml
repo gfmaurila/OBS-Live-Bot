@@ -10,6 +10,7 @@ services:
     ports:
       - "127.0.0.1:${OBS_LIVE_BOT_API_PORT:-5080}:8080"
     environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:8080
       OBS_WEBSOCKET_HOST: ${OBS_WEBSOCKET_HOST:-host.docker.internal}
       OBS_WEBSOCKET_PORT: ${OBS_WEBSOCKET_PORT:-4455}

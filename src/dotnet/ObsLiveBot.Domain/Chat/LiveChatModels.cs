@@ -5,7 +5,8 @@ public enum LiveChatProviderType
     Unknown = 0,
     Twitch = 1,
     YouTube = 2,
-    TikTok = 3
+    TikTok = 3,
+    Development = 100
 }
 
 public enum LiveChatProviderState

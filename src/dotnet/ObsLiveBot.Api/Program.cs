@@ -6,6 +6,7 @@ using ObsLiveBot.Api.Errors;
 using ObsLiveBot.Api.Features.Obs.GetStatus;
 using ObsLiveBot.Api.Features.Obs.LiveState;
 using ObsLiveBot.Api.Features.Chat;
+using ObsLiveBot.Api.Features.Interactions;
 using ObsLiveBot.Application.Features.Obs.GetStatus;
 using ObsLiveBot.Application.Validation;
 using ObsLiveBot.Infrastructure;
@@ -52,6 +53,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
 builder.Services.AddObsInfrastructure();
 builder.Services.AddLiveChatInfrastructure(builder.Configuration);
+builder.Services.AddInteractionInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
@@ -70,6 +72,9 @@ app.MapGet(
         var chat = report.Entries.TryGetValue("chat", out var chatEntry)
             ? chatEntry.Status.ToString().ToLowerInvariant()
             : "unknown";
+        var interactions = report.Entries.TryGetValue("interactions", out var interactionEntry)
+            ? interactionEntry.Status.ToString().ToLowerInvariant()
+            : "unknown";
         var status = report.Status switch
         {
             HealthStatus.Healthy => "healthy",
@@ -78,7 +83,7 @@ app.MapGet(
         };
 
         return Results.Json(
-            new { service = "obs-live-bot", status, obs, chat },
+            new { service = "obs-live-bot", status, obs, chat, interactions },
             statusCode: report.Status == HealthStatus.Unhealthy
                 ? StatusCodes.Status503ServiceUnavailable
                 : StatusCodes.Status200OK);
@@ -87,6 +92,7 @@ app.MapGet(
 app.MapObsStatusEndpoint();
 app.MapObsLiveStateEndpoints();
 app.MapLiveChatEndpoints();
+app.MapInteractionEndpoints(app.Environment.IsDevelopment());
 app.Run();
 
 public partial class Program;

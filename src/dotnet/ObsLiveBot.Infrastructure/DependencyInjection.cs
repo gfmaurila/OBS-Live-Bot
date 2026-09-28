@@ -5,10 +5,12 @@ using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Application.LiveState;
 using ObsLiveBot.Application.LiveChat;
+using ObsLiveBot.Application.Interactions;
 using ObsLiveBot.Infrastructure.Chat;
 using ObsLiveBot.Infrastructure.Configuration;
 using ObsLiveBot.Infrastructure.Events;
 using ObsLiveBot.Infrastructure.Health;
+using ObsLiveBot.Infrastructure.Interactions;
 using ObsLiveBot.Infrastructure.Obs;
 
 namespace ObsLiveBot.Infrastructure;
@@ -70,6 +72,30 @@ public static class DependencyInjection
         services.AddSingleton<ILiveChatProviderRegistry, LiveChatProviderRegistry>();
         services.AddHostedService<LiveChatProviderHostedService>();
         services.AddHealthChecks().AddCheck<LiveChatHealthCheck>("chat");
+        return services;
+    }
+
+    public static IServiceCollection AddInteractionInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<InteractionOptions>()
+            .Bind(configuration.GetSection(InteractionOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<InteractionOptions>, InteractionOptionsValidator>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IInteractionBuffer, InteractionBuffer>();
+        services.AddSingleton<IInteractionCooldownTracker, InteractionCooldownTracker>();
+        services.AddSingleton<IInteractionDecisionPolicy, InteractionDecisionPolicy>();
+        services.AddSingleton<IInteractionContextBuilder, InteractionContextBuilder>();
+        services.AddSingleton<IAiResponseSanitizer, AiResponseSanitizer>();
+        services.AddSingleton<IInteractionOrchestrator, InteractionOrchestrator>();
+        services.AddSingleton<IAiInteractionProvider, DevelopmentAiInteractionProvider>();
+        services.AddSingleton<ITextToSpeechProvider, DevelopmentTextToSpeechProvider>();
+        services.AddSingleton<IInteractionProviderRegistry, InteractionProviderRegistry>();
+        services.AddSingleton<IInteractionEventPublisher, NoOpInteractionEventPublisher>();
+        services.AddHealthChecks().AddCheck<InteractionHealthCheck>("interactions");
         return services;
     }
 

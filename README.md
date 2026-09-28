@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-04.3` estão concluídas. A conexão OBS, Live State e a fundação local de Live Chat Ingestion possuem estado em memória, lifecycle isolado, validação, deduplicação, health checks e APIs read-only.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-05` estão concluídas. A conexão OBS, Live State, Live Chat Ingestion e a fundação local de AI Interaction/TTS possuem estado bounded em memória, validação, health checks e APIs controladas.
 
 ## Serviços locais
 
@@ -38,8 +38,37 @@ Senha: `GfmStudioOS@Dev2026`
 | Live Chat | GET | `/api/chat/state` | `http://localhost:5080/api/chat/state` |
 | Live Chat | GET | `/api/chat/messages` | `http://localhost:5080/api/chat/messages` |
 | Live Chat | GET | `/api/chat/events` | `http://localhost:5080/api/chat/events` |
+| Interactions | GET | `/api/interactions/state` | `http://localhost:5080/api/interactions/state` |
+| Interactions | GET | `/api/interactions/recent` | `http://localhost:5080/api/interactions/recent` |
+| Interactions | GET | `/api/interactions/providers` | `http://localhost:5080/api/interactions/providers` |
+| Interactions (Development) | POST | `/api/interactions/dev/test` | `http://localhost:5080/api/interactions/dev/test` |
 
-Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages` e `/api/chat/events`.
+Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages`, `/api/chat/events`, `/api/interactions/state`, `/api/interactions/recent` e `/api/interactions/providers`.
+
+## AI Interaction e TTS — Foundation
+
+O subsistema de interações processa eventos normalizados pelo mesmo pipeline de decisão, cooldown, contexto, AI, sanitização, TTS, notificações MediatR, buffer bounded e publisher. Mensagens comuns não recebem resposta automática: nesta etapa, respostas ocorrem somente por solicitação explícita do endpoint DEV ou pelo comando reservado `!studio`.
+
+- `DevelopmentAiInteractionProvider` é determinístico, local e identificado pelo prefixo `[DEV AI]`. Ele **não é uma IA real**.
+- `DevelopmentTextToSpeechProvider` retorna somente metadados simulados. Ele **não gera nem reproduz áudio real**.
+- Providers reais, Ollama, engines TTS locais e providers externos ainda não estão configurados.
+- Nenhuma API paga, Internet, banco, broker, cache distribuído ou novo container é necessário.
+- O endpoint `/api/interactions/dev/test` só é registrado quando `ASPNETCORE_ENVIRONMENT=Development`.
+
+Exemplo de teste DEV:
+
+```json
+{
+  "provider": "Development",
+  "channelId": "local",
+  "userId": "dev-user",
+  "userDisplayName": "Developer",
+  "message": "Olá StudioOS",
+  "responseMode": "TextAndVoice"
+}
+```
+
+O resultado `TextAndVoice` confirma a passagem pelo provider TTS DEV, mas não cria arquivo de áudio nem reproduz som na live. Consulte `docs/AI-INTERACTIONS.md` e `docs/TTS.md`.
 
 ## Arquitetura
 C#/.NET 10 é o núcleo (ASP.NET Core, Vertical Slice, CQRS, MediatR oficial, Ardalis.Result, FluentValidation, Serilog, OpenAPI, Domain Events e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador local.

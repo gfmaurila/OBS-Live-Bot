@@ -113,7 +113,7 @@ internal static class ChatQueryValidation
 {
     public static bool IsKnownProvider(string? value) =>
         Enum.TryParse<LiveChatProviderType>(value, true, out var provider) &&
-        provider != LiveChatProviderType.Unknown && Enum.IsDefined(provider);
+        provider is LiveChatProviderType.Twitch or LiveChatProviderType.YouTube or LiveChatProviderType.TikTok;
 
     public static LiveChatProviderType? ParseProvider(string? value) =>
         string.IsNullOrWhiteSpace(value)

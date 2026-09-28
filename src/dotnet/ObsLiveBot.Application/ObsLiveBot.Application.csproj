@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Ardalis.Result" Version="10.1.0" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+    <PackageReference Include="MediatR" Version="12.5.0" />
     <ProjectReference Include="../ObsLiveBot.Domain/ObsLiveBot.Domain.csproj" />
     <ProjectReference Include="../ObsLiveBot.Contracts/ObsLiveBot.Contracts.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

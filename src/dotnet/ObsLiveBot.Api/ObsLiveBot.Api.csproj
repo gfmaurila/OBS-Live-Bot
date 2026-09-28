@@ -3,6 +3,8 @@
     <IntermediateOutputPath>obj-api/$(Configuration)/$(TargetFramework)/</IntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
     <ProjectReference Include="../ObsLiveBot.Application/ObsLiveBot.Application.csproj" />
     <ProjectReference Include="../ObsLiveBot.Contracts/ObsLiveBot.Contracts.csproj" />
     <ProjectReference Include="../ObsLiveBot.Infrastructure/ObsLiveBot.Infrastructure.csproj" />

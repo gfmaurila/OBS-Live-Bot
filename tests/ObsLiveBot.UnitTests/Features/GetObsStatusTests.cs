@@ -12,9 +12,10 @@ public sealed class GetObsStatusTests
     {
         var handler = new GetObsStatusQueryHandler(new FakeObsClient());
 
-        var response = await handler.HandleAsync(
+        var result = await handler.Handle(
             new GetObsStatusQuery(),
             CancellationToken.None);
+        var response = result.Value;
         var json = JsonSerializer.Serialize(response);
 
         Assert.DoesNotContain("password", json, StringComparison.OrdinalIgnoreCase);

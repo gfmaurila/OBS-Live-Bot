@@ -1,5 +1,5 @@
+using MediatR;
 using ObsLiveBot.Application.Features.Obs.GetStatus;
-using ObsLiveBot.Application.Mediator;
 using ObsLiveBot.Contracts.Obs;
 
 namespace ObsLiveBot.Api.Features.Obs.GetStatus;
@@ -10,12 +10,12 @@ public static class ObsStatusEndpoint
     {
         endpoints.MapGet(
                 "/api/obs/status",
-                async (IMediator mediator, CancellationToken cancellationToken) =>
+                async (ISender sender, CancellationToken cancellationToken) =>
                 {
-                    var response = await mediator.SendAsync<ObsStatusResponse>(
+                    var result = await sender.Send(
                         new GetObsStatusQuery(),
                         cancellationToken);
-                    return Results.Ok(response);
+                    return Results.Ok(result.Value);
                 })
             .WithName("GetObsStatus")
             .WithTags("OBS")

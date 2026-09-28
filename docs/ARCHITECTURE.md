@@ -23,17 +23,21 @@
 ```
 
 ## Stack C# oficial
-- ASP.NET Core
+- .NET 10 + ASP.NET Core
 - Vertical Slice Architecture
 - CQRS
-- Mediator
+- MediatR (pacote oficial; sem implementação própria)
+- Ardalis.Result
+- FluentValidation
 - Domain Model
 - Domain Events
-- Entity Framework Core + Migrations
+- Entity Framework Core SQL Server + Migrations
 - Validation via pipeline
 - Mapping entre Request/Command/Domain/Response
 - Dependency Injection
-- Structured Logging
+- Serilog structured logging
+- Swagger / OpenAPI
+- Docker + Docker Compose
 
 ## Fluxo de slice
 ```text
@@ -120,7 +124,7 @@ n8n (orquestrador)
 ```
 
 - `ObsLiveBot.Domain` contém estado de conexão, snapshot de runtime e eventos, sem dependência WebSocket.
-- `ObsLiveBot.Application` contém contratos, query/handler e mediator.
+- `ObsLiveBot.Application` contém contratos, query/handler, pipeline FluentValidation e integração com MediatR oficial.
 - `ObsLiveBot.Infrastructure` possui Options, protocolo WebSocket, connection manager, reconexão e health check.
 - `ObsLiveBot.Api` expõe somente leitura em `/api/obs/status` e `/health`.
 - A conexão é única e reutilizável; operações não abrem sockets independentes.

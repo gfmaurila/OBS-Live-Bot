@@ -59,5 +59,8 @@ Logs operacionais: `OBS_CONNECTING`, `OBS_CONNECTED`, `OBS_DISCONNECTED`, `OBS_R
 - Host Docker: `host.docker.internal`.
 - Porta configurada/escutando: `4455`.
 - O `Hello` real informou OBS WebSocket `5.7.3` e anunciou autenticação.
-- A configuração local possui senha vazia. Por isso as leituras autenticadas reais ficaram bloqueadas; nenhum segredo foi procurado ou extraído.
-- Nenhum arquivo em `OBS_CONFIG_ROOT` foi escrito pelo projeto.
+- A credencial comprometida foi rotacionada com 32 bytes aleatórios, armazenada somente no `.env` ignorado e aplicada ao OBS com o programa fechado.
+- Antes da alteração foi criado backup protegido por Windows DPAPI do arquivo específico do OBS WebSocket.
+- A autenticação e as leituras reais retornaram OBS `32.1.2`, WebSocket `5.7.3`, cena atual, streaming e recording.
+- O teste real confirmou `Connected -> Reconnecting/Degraded -> Connected/Healthy`, sem queda da API.
+- Fora da rotação explicitamente autorizada do arquivo WebSocket, nenhuma cena, profile, source, scene collection ou configuração operacional do OBS foi alterada.

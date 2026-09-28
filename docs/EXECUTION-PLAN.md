@@ -6,7 +6,7 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 |---|---|---|
 | OBS-LIVE-BOT-00 | Project Foundation | PASS |
 | OBS-LIVE-BOT-01 | Docker + n8n local | PASS |
-| OBS-LIVE-BOT-02 | OBS WebSocket Connection | **PARTIAL — implementada; validação real bloqueada por autenticação anunciada pelo OBS** |
+| OBS-LIVE-BOT-02 | OBS WebSocket Connection | **PASS — autenticação, leituras, endpoint, health e reconexão real validados** |
 | OBS-LIVE-BOT-03 | Live State Detection | planejada |
 | OBS-LIVE-BOT-04 | Primeiro Chat Connector | planejada |
 | OBS-LIVE-BOT-05 | Welcome Engine | planejada |
@@ -25,4 +25,4 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 - **Módulo 05 — Live Command Center:** aplicação Windows centralizadora.
 - **Módulo 06 — Configuration, Backup & Restore:** configurações, backup/restore integral do OBS e Job automático no fechamento do OBS.
 
-Essas trilhas deverão ser quebradas em tasks numeradas quando chegarem à execução. Até a conexão real ser validada, a task ativa permanece `OBS-LIVE-BOT-02`; `OBS-LIVE-BOT-03` não foi iniciada.
+Essas trilhas deverão ser quebradas em tasks numeradas quando chegarem à execução. `OBS-LIVE-BOT-02` foi concluída; `OBS-LIVE-BOT-03` permanece não iniciada até solicitação explícita.

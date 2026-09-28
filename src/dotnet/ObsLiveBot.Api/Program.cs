@@ -1,17 +1,22 @@
+using FluentValidation;
+using MediatR;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using ObsLiveBot.Api.Configuration;
 using ObsLiveBot.Api.Features.Obs.GetStatus;
 using ObsLiveBot.Application.Features.Obs.GetStatus;
-using ObsLiveBot.Application.Mediator;
-using ObsLiveBot.Contracts.Obs;
+using ObsLiveBot.Application.Validation;
 using ObsLiveBot.Infrastructure;
 using ObsLiveBot.Infrastructure.Configuration;
+using Serilog;
+using Serilog.Formatting.Json;
 
 DotEnv.LoadIfPresent(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Logging.ClearProviders();
-builder.Logging.AddJsonConsole();
+builder.Host.UseSerilog((_, _, loggerConfiguration) => loggerConfiguration
+    .MinimumLevel.Information()
+    .Enrich.FromLogContext()
+    .WriteTo.Console(new JsonFormatter()));
 
 builder.Services
     .AddOptions<ObsWebSocketOptions>()
@@ -32,11 +37,20 @@ builder.Services
     })
     .ValidateOnStart();
 
-builder.Services.AddSingleton<IMediator, ServiceProviderMediator>();
-builder.Services.AddSingleton<IQueryHandler<GetObsStatusQuery, ObsStatusResponse>, GetObsStatusQueryHandler>();
+builder.Services.AddMediatR(configuration =>
+{
+    configuration.RegisterServicesFromAssemblyContaining<GetObsStatusQuery>();
+    configuration.AddOpenBehavior(typeof(ValidationBehavior<,>));
+});
+builder.Services.AddValidatorsFromAssemblyContaining<GetObsStatusQuery>();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 builder.Services.AddObsInfrastructure();
 
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.MapGet(
     "/health",

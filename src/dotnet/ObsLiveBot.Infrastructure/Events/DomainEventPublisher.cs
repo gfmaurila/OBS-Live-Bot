@@ -1,12 +1,13 @@
-using Microsoft.Extensions.DependencyInjection;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using ObsLiveBot.Application.Abstractions;
+using ObsLiveBot.Application.Events;
 using ObsLiveBot.Domain.Obs;
 
 namespace ObsLiveBot.Infrastructure.Events;
 
 public sealed class DomainEventPublisher(
-    IServiceProvider serviceProvider,
+    IPublisher publisher,
     ILogger<DomainEventPublisher> logger) : IDomainEventPublisher
 {
     public async Task PublishAsync(IDomainEvent domainEvent, CancellationToken cancellationToken = default)
@@ -14,15 +15,8 @@ public sealed class DomainEventPublisher(
         ArgumentNullException.ThrowIfNull(domainEvent);
         logger.LogDebug("OBS_DOMAIN_EVENT eventType={EventType}", domainEvent.GetType().Name);
 
-        var handlerInterface = typeof(IDomainEventHandler<>).MakeGenericType(domainEvent.GetType());
-        var handlers = serviceProvider.GetServices(handlerInterface);
-        var handleMethod = handlerInterface.GetMethod("HandleAsync")
-            ?? throw new InvalidOperationException("Domain event handler contract is invalid.");
-
-        foreach (var handler in handlers)
-        {
-            var task = (Task)handleMethod.Invoke(handler, [domainEvent, cancellationToken])!;
-            await task.ConfigureAwait(false);
-        }
+        await publisher.Publish(
+            new DomainEventNotification(domainEvent),
+            cancellationToken).ConfigureAwait(false);
     }
 }

@@ -23,3 +23,5 @@ Credenciais protegidas por Windows/DPAPI/OAuth/provedor podem exigir reautentica
 - Logs registram somente códigos operacionais e tipos de erro, nunca senha, challenge, salt ou resposta de autenticação.
 - `.dockerignore` exclui `.env`, dados do n8n, logs e backups do contexto da imagem.
 - Respostas de `/health` e `/api/obs/status` não possuem campos de credencial.
+- Rotações geram senha com CSPRNG (mínimo de 32 bytes), gravam o valor somente no `.env` local e no arquivo WebSocket do OBS, e nunca exibem o valor.
+- O backup pré-rotação do arquivo WebSocket é protegido com Windows DPAPI (`CurrentUser`) e permanece excluído do Git.

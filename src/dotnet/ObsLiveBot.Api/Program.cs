@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using ObsLiveBot.Api.Configuration;
 using ObsLiveBot.Api.Features.Obs.GetStatus;
+using ObsLiveBot.Api.Features.Obs.LiveState;
 using ObsLiveBot.Application.Features.Obs.GetStatus;
 using ObsLiveBot.Application.Validation;
 using ObsLiveBot.Infrastructure;
@@ -75,6 +76,7 @@ app.MapGet(
     });
 
 app.MapObsStatusEndpoint();
+app.MapObsLiveStateEndpoints();
 app.Run();
 
 public partial class Program;

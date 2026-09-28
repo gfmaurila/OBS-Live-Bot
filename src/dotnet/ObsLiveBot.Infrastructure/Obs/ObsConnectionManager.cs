@@ -9,6 +9,7 @@ public sealed class ObsConnectionManager(
     IObsProtocolClient protocolClient,
     IReconnectDelay reconnectDelay,
     IDomainEventPublisher eventPublisher,
+    IObsLiveStateTracker liveStateTracker,
     TimeProvider timeProvider,
     ILogger<ObsConnectionManager> logger) : BackgroundService, IObsClient
 {
@@ -70,6 +71,7 @@ public sealed class ObsConnectionManager(
         {
             await protocolClient.DisconnectAsync(cancellationToken).ConfigureAwait(false);
             UpdateConnectionState(ObsConnectionState.Disconnected);
+            await liveStateTracker.MarkStaleAsync(ObsConnectionState.Disconnected, cancellationToken).ConfigureAwait(false);
             logger.LogInformation("OBS_DISCONNECTED");
             await eventPublisher.PublishAsync(
                 new ObsDisconnected(timeProvider.GetUtcNow()),
@@ -113,13 +115,14 @@ public sealed class ObsConnectionManager(
                     attempt = 0;
                 }
 
-                await protocolClient.Completion.WaitAsync(stoppingToken).ConfigureAwait(false);
+                await ProcessEventsUntilDisconnectedAsync(stoppingToken).ConfigureAwait(false);
                 if (stoppingToken.IsCancellationRequested)
                 {
                     break;
                 }
 
                 UpdateConnectionState(ObsConnectionState.Disconnected);
+                await liveStateTracker.MarkStaleAsync(ObsConnectionState.Disconnected, stoppingToken).ConfigureAwait(false);
                 logger.LogWarning("OBS_DISCONNECTED");
                 await eventPublisher.PublishAsync(
                     new ObsDisconnected(timeProvider.GetUtcNow()),
@@ -137,6 +140,7 @@ public sealed class ObsConnectionManager(
             catch (Exception exception)
             {
                 UpdateConnectionState(ObsConnectionState.Reconnecting);
+                await liveStateTracker.MarkStaleAsync(ObsConnectionState.Reconnecting, stoppingToken).ConfigureAwait(false);
                 logger.LogWarning("OBS_CONNECTION_FAILED errorType={ErrorType}", exception.GetType().Name);
                 await eventPublisher.PublishAsync(
                     new ObsConnectionFailed(timeProvider.GetUtcNow(), "connection_failed"),
@@ -148,6 +152,7 @@ public sealed class ObsConnectionManager(
             if (!authenticationFailed)
             {
                 UpdateConnectionState(ObsConnectionState.Reconnecting);
+                await liveStateTracker.MarkStaleAsync(ObsConnectionState.Reconnecting, stoppingToken).ConfigureAwait(false);
             }
             logger.LogInformation(
                 "OBS_RECONNECTING attempt={Attempt} delaySeconds={DelaySeconds}",
@@ -172,6 +177,7 @@ public sealed class ObsConnectionManager(
     {
         await protocolClient.DisconnectAsync(cancellationToken).ConfigureAwait(false);
         UpdateConnectionState(ObsConnectionState.Disconnected);
+        await liveStateTracker.MarkStaleAsync(ObsConnectionState.Disconnected, cancellationToken).ConfigureAwait(false);
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -181,6 +187,10 @@ public sealed class ObsConnectionManager(
         var scene = await protocolClient.GetCurrentProgramSceneAsync(cancellationToken).ConfigureAwait(false);
         var streaming = await protocolClient.GetStreamStatusAsync(cancellationToken).ConfigureAwait(false);
         var recording = await protocolClient.GetRecordStatusAsync(cancellationToken).ConfigureAwait(false);
+        var sceneCollection = await protocolClient.GetCurrentSceneCollectionAsync(cancellationToken).ConfigureAwait(false);
+        var profile = await protocolClient.GetCurrentProfileAsync(cancellationToken).ConfigureAwait(false);
+        var replayBuffer = await protocolClient.GetReplayBufferStatusAsync(cancellationToken).ConfigureAwait(false);
+        var virtualCamera = await protocolClient.GetVirtualCameraStatusAsync(cancellationToken).ConfigureAwait(false);
 
         lock (_stateLock)
         {
@@ -193,6 +203,44 @@ public sealed class ObsConnectionManager(
                 recording.IsRecording,
                 recording.IsPaused,
                 timeProvider.GetUtcNow());
+        }
+
+        await liveStateTracker.SynchronizeAsync(
+            new ObsStateSnapshot(
+                version.ObsVersion,
+                version.WebSocketVersion,
+                scene,
+                sceneCollection,
+                profile,
+                streaming,
+                recording.IsRecording,
+                recording.IsPaused,
+                replayBuffer,
+                virtualCamera),
+            Guid.NewGuid(),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ProcessEventsUntilDisconnectedAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested && protocolClient.IsConnected)
+        {
+            while (protocolClient.Events.TryRead(out var message))
+            {
+                try
+                {
+                    await liveStateTracker.ProcessAsync(message, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning("OBS_STATE_EVENT_FAILED eventType={EventType} errorType={ErrorType}", message.EventType, exception.GetType().Name);
+                }
+            }
+
+            var eventAvailable = protocolClient.Events.WaitToReadAsync(cancellationToken).AsTask();
+            var completed = await Task.WhenAny(eventAvailable, protocolClient.Completion).ConfigureAwait(false);
+            if (completed == protocolClient.Completion) return;
+            if (!await eventAvailable.ConfigureAwait(false)) return;
         }
     }
 

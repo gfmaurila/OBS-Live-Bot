@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
@@ -17,6 +18,8 @@ public sealed class ObsWebSocketClient(
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pending = new();
+    private readonly Channel<ObsExternalEvent> _events = Channel.CreateUnbounded<ObsExternalEvent>(
+        new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private ClientWebSocket? _socket;
     private CancellationTokenSource? _receiveCancellation;
     private TaskCompletionSource _completion = NewCompletionSource();
@@ -25,6 +28,8 @@ public sealed class ObsWebSocketClient(
     public bool IsConnected => _connected;
 
     public Task Completion => _completion.Task;
+
+    public ChannelReader<ObsExternalEvent> Events => _events.Reader;
 
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
@@ -154,6 +159,24 @@ public sealed class ObsWebSocketClient(
             data.TryGetProperty("outputPaused", out var paused) && paused.GetBoolean());
     }
 
+    public async Task<string> GetCurrentSceneCollectionAsync(CancellationToken cancellationToken)
+    {
+        var data = await RequestAsync("GetSceneCollectionList", cancellationToken).ConfigureAwait(false);
+        return GetRequiredString(data, "currentSceneCollectionName");
+    }
+
+    public async Task<string> GetCurrentProfileAsync(CancellationToken cancellationToken)
+    {
+        var data = await RequestAsync("GetProfileList", cancellationToken).ConfigureAwait(false);
+        return GetRequiredString(data, "currentProfileName");
+    }
+
+    public Task<bool?> GetReplayBufferStatusAsync(CancellationToken cancellationToken) =>
+        GetOptionalOutputStatusAsync("GetReplayBufferStatus", cancellationToken);
+
+    public Task<bool?> GetVirtualCameraStatusAsync(CancellationToken cancellationToken) =>
+        GetOptionalOutputStatusAsync("GetVirtualCamStatus", cancellationToken);
+
     public async ValueTask DisposeAsync()
     {
         await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
@@ -201,7 +224,19 @@ public sealed class ObsWebSocketClient(
             {
                 using var document = await ReceiveDocumentAsync(socket, cancellationToken).ConfigureAwait(false);
                 var root = document.RootElement;
-                if (root.GetProperty("op").GetInt32() != 7)
+                var opcode = root.GetProperty("op").GetInt32();
+                if (opcode == 5)
+                {
+                    var eventMessage = root.GetProperty("d");
+                    var eventType = GetRequiredString(eventMessage, "eventType");
+                    var eventData = eventMessage.TryGetProperty("eventData", out var dataElement)
+                        ? dataElement.Clone()
+                        : JsonDocument.Parse("{}").RootElement.Clone();
+                    _events.Writer.TryWrite(new ObsExternalEvent(eventType, eventData, DateTimeOffset.UtcNow));
+                    continue;
+                }
+
+                if (opcode != 7)
                 {
                     continue;
                 }
@@ -217,7 +252,7 @@ public sealed class ObsWebSocketClient(
                 if (!requestStatus.GetProperty("result").GetBoolean())
                 {
                     var code = requestStatus.GetProperty("code").GetInt32();
-                    completion.TrySetException(new InvalidOperationException($"OBS request failed with status code {code}."));
+                    completion.TrySetException(new ObsRequestException(GetRequiredString(data, "requestType"), code));
                     continue;
                 }
 
@@ -244,6 +279,20 @@ public sealed class ObsWebSocketClient(
 
             _pending.Clear();
             _completion.TrySetResult();
+        }
+    }
+
+    private async Task<bool?> GetOptionalOutputStatusAsync(string requestType, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var data = await RequestAsync(requestType, cancellationToken).ConfigureAwait(false);
+            return data.GetProperty("outputActive").GetBoolean();
+        }
+        catch (ObsRequestException exception) when (exception.StatusCode is 501 or 600 or 601)
+        {
+            logger.LogInformation("OBS_OPTIONAL_CAPABILITY_UNAVAILABLE requestType={RequestType}", requestType);
+            return null;
         }
     }
 

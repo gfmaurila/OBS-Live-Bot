@@ -129,3 +129,24 @@ n8n (orquestrador)
 - `ObsLiveBot.Api` expõe somente leitura em `/api/obs/status` e `/health`.
 - A conexão é única e reutilizável; operações não abrem sockets independentes.
 - Eventos `ObsConnected`, `ObsDisconnected`, `ObsReconnecting` e `ObsConnectionFailed` permitem extensão desacoplada.
+
+## Live State Detection (OBS-LIVE-BOT-03)
+
+```text
+OBS WebSocket 5.x
+  -> Event Adapter (op=5)
+     -> Channel ordenado, single-reader
+        -> Application / MediatR
+           -> ObsLiveState thread-safe
+              -> buffer limitado de eventos
+                 -> API read-only
+                    -> ILiveEventPublisher (bridge futuro)
+                       -> n8n (futuro, somente orquestração)
+```
+
+- O socket apenas clona/enfileira eventos; interpretação e publicação não bloqueiam o receive loop.
+- O estado usa snapshots imutáveis protegidos para leituras concorrentes e serialização ordenada das transições.
+- Cada envelope possui `EventId`, UTC timestamp, `ConnectionId`, correlation, sequence e payload sanitizado.
+- A sequence é monotônica por conexão. Um reconnect cria novo `ConnectionId`, preserva o último snapshot como stale e executa full resync antes de voltar a synchronized.
+- Eventos equivalentes ao estado atual são deduplicados.
+- O buffer mantém no máximo 100 eventos em memória; não há persistência nesta task.

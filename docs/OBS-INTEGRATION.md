@@ -64,3 +64,18 @@ Logs operacionais: `OBS_CONNECTING`, `OBS_CONNECTED`, `OBS_DISCONNECTED`, `OBS_R
 - A autenticação e as leituras reais retornaram OBS `32.1.2`, WebSocket `5.7.3`, cena atual, streaming e recording.
 - O teste real confirmou `Connected -> Reconnecting/Degraded -> Connected/Healthy`, sem queda da API.
 - Fora da rotação explicitamente autorizada do arquivo WebSocket, nenhuma cena, profile, source, scene collection ou configuração operacional do OBS foi alterada.
+
+## Detecção de estado em tempo real
+
+O `Identify` assina somente as categorias necessárias: General, Config, Scenes, Inputs, Outputs, SceneItems, InputActiveStateChanged e InputShowStateChanged. Eventos `op=5` entram em um `Channel` ordenado e são interpretados pela Application.
+
+O estado central acompanha conexão/sincronização, cena, collection, profile, stream, recording, replay buffer e câmera virtual. Mudanças de sources, visibilidade, mute e volume são publicadas como notifications do MediatR e armazenadas no buffer limitado de inspeção.
+
+Em cada conexão ou reconnect ocorre sincronização completa por requests de leitura. Durante indisponibilidade, o último estado é preservado com `stale=true` e `synchronized=false`; após reconexão, um novo `ConnectionId` e uma nova sequence identificam a sessão.
+
+Endpoints:
+
+- `GET /api/obs/live-state`
+- `GET /api/obs/events?limit=20` (`limit` entre 1 e 100)
+
+O teste real detectou a transição controlada `Iniciando -> Finalizando -> Iniciando`, restaurou a cena original e confirmou full resync após reinício do OBS com stream e recording inativos.

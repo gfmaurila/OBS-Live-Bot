@@ -6,6 +6,9 @@ namespace ObsLiveBot.Infrastructure.Obs;
 
 public static class ObsProtocolMessages
 {
+    public const int LiveStateEventSubscriptions =
+        (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 6) | (1 << 7) | (1 << 16) | (1 << 17);
+
     public static string ComputeAuthentication(string password, string salt, string challenge)
     {
         ArgumentNullException.ThrowIfNull(password);
@@ -22,7 +25,7 @@ public static class ObsProtocolMessages
     {
         if (!helloData.TryGetProperty("authentication", out var authentication))
         {
-            return new { op = 1, d = new { rpcVersion = 1, eventSubscriptions = 0 } };
+            return new { op = 1, d = new { rpcVersion = 1, eventSubscriptions = LiveStateEventSubscriptions } };
         }
 
         if (string.IsNullOrEmpty(password))
@@ -36,6 +39,6 @@ public static class ObsProtocolMessages
             ?? throw new InvalidDataException("OBS WebSocket authentication salt is missing.");
         var response = ComputeAuthentication(password, salt, challenge);
 
-        return new { op = 1, d = new { rpcVersion = 1, authentication = response, eventSubscriptions = 0 } };
+        return new { op = 1, d = new { rpcVersion = 1, authentication = response, eventSubscriptions = LiveStateEventSubscriptions } };
     }
 }

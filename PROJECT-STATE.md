@@ -10,9 +10,10 @@ IN_PROGRESS
 - OBS-LIVE-BOT-00 — Project Foundation.
 - OBS-LIVE-BOT-01 — Docker + n8n local: container, porta 5679, healthcheck, isolamento, persistência, restart e recreation validados.
 - OBS-LIVE-BOT-02 — conexão autenticada OBS WebSocket 5.x, leituras de runtime, reconexão real, health check, endpoint e testes validados.
+- OBS-LIVE-BOT-03 — subscriptions OBS, Live State thread-safe, sincronização/reconexão, eventos MediatR, buffer limitado e endpoints validados.
 
 ## Próxima task executável
-**OBS-LIVE-BOT-03 — Live State Detection.** Não iniciada automaticamente.
+**OBS-LIVE-BOT-04 — Live Chat Ingestion.** Não iniciada automaticamente.
 
 A ampliação arquitetural para Content Engine, Command Center e Configuration/Backup/Restore está documentada, mas não autoriza antecipar implementação.
 

@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Domain.Obs;
@@ -93,6 +94,7 @@ public sealed class ObsConnectionManagerTests
             protocol,
             reconnectDelay ?? new ProgressiveReconnectDelay(),
             new FakeEventPublisher(),
+            new FakeLiveStateTracker(),
             TimeProvider.System,
             NullLogger<ObsConnectionManager>.Instance);
 
@@ -129,6 +131,7 @@ public sealed class ObsConnectionManagerTests
     private sealed class FakeProtocolClient : IObsProtocolClient
     {
         private TaskCompletionSource _completion = NewCompletion();
+        private readonly Channel<ObsExternalEvent> _events = Channel.CreateUnbounded<ObsExternalEvent>();
 
         public bool AuthenticationFailure { get; init; }
 
@@ -141,6 +144,8 @@ public sealed class ObsConnectionManagerTests
         public bool IsConnected { get; private set; }
 
         public Task Completion => _completion.Task;
+
+        public ChannelReader<ObsExternalEvent> Events => _events.Reader;
 
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
@@ -183,7 +188,32 @@ public sealed class ObsConnectionManagerTests
         public Task<ObsRecordStatus> GetRecordStatusAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new ObsRecordStatus(false, false));
 
+        public Task<string> GetCurrentSceneCollectionAsync(CancellationToken cancellationToken) => Task.FromResult("Collection");
+
+        public Task<string> GetCurrentProfileAsync(CancellationToken cancellationToken) => Task.FromResult("Profile");
+
+        public Task<bool?> GetReplayBufferStatusAsync(CancellationToken cancellationToken) => Task.FromResult<bool?>(false);
+
+        public Task<bool?> GetVirtualCameraStatusAsync(CancellationToken cancellationToken) => Task.FromResult<bool?>(false);
+
         private static TaskCompletionSource NewCompletion() =>
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class FakeLiveStateTracker : IObsLiveStateTracker
+    {
+        public ObsLiveState State { get; private set; } = ObsLiveState.Initial;
+        public IReadOnlyList<ObsEventEnvelope> GetRecentEvents(int limit) => [];
+        public Task ProcessAsync(ObsExternalEvent externalEvent, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task MarkStaleAsync(ObsConnectionState connectionState, CancellationToken cancellationToken)
+        {
+            State = State with { ConnectionState = connectionState, IsStale = true, IsSynchronized = false };
+            return Task.CompletedTask;
+        }
+        public Task SynchronizeAsync(ObsStateSnapshot snapshot, Guid connectionId, CancellationToken cancellationToken)
+        {
+            State = State with { ConnectionState = ObsConnectionState.Connected, IsStale = false, IsSynchronized = true, ConnectionId = connectionId };
+            return Task.CompletedTask;
+        }
     }
 }

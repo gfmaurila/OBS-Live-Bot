@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
+using ObsLiveBot.Application.LiveState;
 using ObsLiveBot.Infrastructure.Configuration;
 using ObsLiveBot.Infrastructure.Events;
 using ObsLiveBot.Infrastructure.Health;
@@ -18,6 +19,10 @@ public static class DependencyInjection
         services.AddSingleton<IObsProtocolClient, ObsWebSocketClient>();
         services.AddSingleton<IReconnectDelay, ProgressiveReconnectDelay>();
         services.AddSingleton<IDomainEventPublisher, DomainEventPublisher>();
+        services.AddSingleton<ILiveEventPublisher, NoOpLiveEventPublisher>();
+        services.AddSingleton<ObsLiveStateTracker>();
+        services.AddSingleton<IObsLiveStateTracker>(provider => provider.GetRequiredService<ObsLiveStateTracker>());
+        services.AddSingleton<IObsLiveStateReader>(provider => provider.GetRequiredService<ObsLiveStateTracker>());
         services.AddSingleton<ObsConnectionManager>();
         services.AddSingleton<IObsClient>(provider => provider.GetRequiredService<ObsConnectionManager>());
         services.AddHostedService(provider => provider.GetRequiredService<ObsConnectionManager>());

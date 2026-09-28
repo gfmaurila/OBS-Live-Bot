@@ -51,32 +51,9 @@ public sealed class InteractionOrchestrator(
             return ignored;
         }
 
-        var aiProvider = providers.GetAiProvider();
-        if (aiProvider is null || !aiProvider.IsAvailable)
-        {
-            return await FailAsync(decision, "AI_PROVIDER_UNAVAILABLE", cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        AiInteractionResponse aiResponse;
-        try
-        {
-            aiResponse = await aiProvider.GenerateAsync(
-                contextBuilder.Build(chatEvent, decision), cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogWarning(
-                "INTERACTION_AI_FAILED interactionId={InteractionId} provider={Provider} errorType={ErrorType}",
-                decision.DecisionId,
-                aiProvider.Name,
-                exception.GetType().Name);
-            return await FailAsync(
-                decision,
-                "AI_PROVIDER_EXCEPTION",
-                cancellationToken,
-                aiProvider.Name).ConfigureAwait(false);
-        }
+        var aiOutcome = await GenerateAiAsync(
+            contextBuilder.Build(chatEvent, decision), decision, cancellationToken).ConfigureAwait(false);
+        var aiResponse = aiOutcome.Response;
 
         if (!aiResponse.Success)
         {
@@ -87,7 +64,9 @@ public sealed class InteractionOrchestrator(
                 aiResponse.ProviderName,
                 aiResponse.ModelName,
                 false,
-                aiResponse.Duration).ConfigureAwait(false);
+                aiResponse.Duration,
+                aiFallbackUsed: aiOutcome.FallbackUsed,
+                primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
         }
 
         var sanitized = sanitizer.Sanitize(aiResponse.Text);
@@ -100,7 +79,9 @@ public sealed class InteractionOrchestrator(
                 aiResponse.ProviderName,
                 aiResponse.ModelName,
                 true,
-                aiResponse.Duration).ConfigureAwait(false);
+                aiResponse.Duration,
+                aiFallbackUsed: aiOutcome.FallbackUsed,
+                primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
         }
 
         TextToSpeechResult? ttsResult = null;
@@ -117,7 +98,9 @@ public sealed class InteractionOrchestrator(
                     aiResponse.ModelName,
                     true,
                     aiResponse.Duration,
-                    responseText: sanitized.Text).ConfigureAwait(false);
+                    responseText: sanitized.Text,
+                    aiFallbackUsed: aiOutcome.FallbackUsed,
+                    primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
             }
 
             try
@@ -147,7 +130,9 @@ public sealed class InteractionOrchestrator(
                     true,
                     aiResponse.Duration,
                     ttsProvider.Name,
-                    responseText: sanitized.Text).ConfigureAwait(false);
+                    responseText: sanitized.Text,
+                    aiFallbackUsed: aiOutcome.FallbackUsed,
+                    primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
             }
 
             if (!ttsResult.Success)
@@ -165,7 +150,9 @@ public sealed class InteractionOrchestrator(
                     ttsResult.Duration,
                     sanitized.Text,
                     ttsResult.AudioFormat,
-                    ttsResult.AudioPath).ConfigureAwait(false);
+                    ttsResult.AudioPath,
+                    aiOutcome.FallbackUsed,
+                    aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
             }
         }
 
@@ -178,6 +165,8 @@ public sealed class InteractionOrchestrator(
             aiResponse.ModelName,
             true,
             aiResponse.Duration,
+            aiOutcome.FallbackUsed,
+            aiOutcome.PrimaryErrorCode,
             ttsResult?.ProviderName,
             ttsResult?.Success,
             ttsResult?.AudioFormat,
@@ -205,7 +194,9 @@ public sealed class InteractionOrchestrator(
         TimeSpan? ttsDuration = null,
         string? responseText = null,
         string? audioFormat = null,
-        string? audioPath = null) =>
+        string? audioPath = null,
+        bool aiFallbackUsed = false,
+        string? primaryAiErrorCode = null) =>
         new(
             decision.DecisionId,
             decision,
@@ -215,6 +206,8 @@ public sealed class InteractionOrchestrator(
             aiModel,
             aiSuccess,
             aiDuration,
+            aiFallbackUsed,
+            primaryAiErrorCode,
             ttsProvider,
             ttsSuccess,
             audioFormat,
@@ -239,7 +232,9 @@ public sealed class InteractionOrchestrator(
         TimeSpan? ttsDuration = null,
         string? responseText = null,
         string? audioFormat = null,
-        string? audioPath = null)
+        string? audioPath = null,
+        bool aiFallbackUsed = false,
+        string? primaryAiErrorCode = null)
     {
         var failed = CreateResult(
             decision,
@@ -254,13 +249,84 @@ public sealed class InteractionOrchestrator(
             ttsDuration,
             responseText,
             audioFormat,
-            audioPath);
+            audioPath,
+            aiFallbackUsed,
+            primaryAiErrorCode);
         buffer.Add(failed);
         await mediator.Publish(new InteractionFailedNotification(failed), cancellationToken)
             .ConfigureAwait(false);
         await PublishSafelyAsync(failed, cancellationToken).ConfigureAwait(false);
         return failed;
     }
+
+    private async Task<AiGenerationOutcome> GenerateAiAsync(
+        AiInteractionRequest request,
+        InteractionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        var primary = providers.GetAiProvider();
+        if (primary is null)
+        {
+            return new AiGenerationOutcome(
+                FailedAiResponse(request, "AI_PROVIDER_UNAVAILABLE"), false, null);
+        }
+
+        var primaryResponse = await GenerateSafelyAsync(primary, request, decision, cancellationToken)
+            .ConfigureAwait(false);
+        if (primaryResponse.Success || primary.IsDevelopment || !providers.AllowDevelopmentFallback)
+        {
+            return new AiGenerationOutcome(primaryResponse, false, null);
+        }
+
+        var fallback = providers.GetDevelopmentAiProvider();
+        if (fallback is null || ReferenceEquals(fallback, primary))
+        {
+            return new AiGenerationOutcome(primaryResponse, false, null);
+        }
+
+        logger.LogWarning(
+            "INTERACTION_AI_FALLBACK interactionId={InteractionId} primaryProvider={PrimaryProvider} primaryError={PrimaryError} fallbackProvider={FallbackProvider}",
+            decision.DecisionId,
+            primary.Name,
+            primaryResponse.ErrorCode,
+            fallback.Name);
+        var fallbackResponse = await GenerateSafelyAsync(fallback, request, decision, cancellationToken)
+            .ConfigureAwait(false);
+        return new AiGenerationOutcome(fallbackResponse, true, primaryResponse.ErrorCode);
+    }
+
+    private async Task<AiInteractionResponse> GenerateSafelyAsync(
+        IAiInteractionProvider provider,
+        AiInteractionRequest request,
+        InteractionDecision decision,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await provider.GenerateAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                "INTERACTION_AI_FAILED interactionId={InteractionId} provider={Provider} errorType={ErrorType}",
+                decision.DecisionId,
+                provider.Name,
+                exception.GetType().Name);
+            return FailedAiResponse(request, "AI_PROVIDER_EXCEPTION", provider.Name, provider.ModelName);
+        }
+    }
+
+    private static AiInteractionResponse FailedAiResponse(
+        AiInteractionRequest request,
+        string errorCode,
+        string providerName = "Unavailable",
+        string modelName = "Unavailable") =>
+        new(null, providerName, modelName, TimeSpan.Zero, false, errorCode, request.CorrelationId, false);
+
+    private sealed record AiGenerationOutcome(
+        AiInteractionResponse Response,
+        bool FallbackUsed,
+        string? PrimaryErrorCode);
 
     private async Task CompleteAsync(InteractionResult result, CancellationToken cancellationToken)
     {

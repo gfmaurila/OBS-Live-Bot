@@ -17,26 +17,62 @@ public sealed class InteractionProviderRegistry(
         _aiProviders.FirstOrDefault(provider =>
             string.Equals(provider.Name, _options.AiProvider, StringComparison.OrdinalIgnoreCase));
 
+    public IAiInteractionProvider? GetDevelopmentAiProvider() =>
+        _aiProviders.FirstOrDefault(provider => provider.IsDevelopment);
+
+    public bool AllowDevelopmentFallback => _options.AllowDevelopmentFallback;
+
     public ITextToSpeechProvider? GetTtsProvider() =>
         _ttsProviders.FirstOrDefault(provider =>
             string.Equals(provider.Name, _options.TtsProvider, StringComparison.OrdinalIgnoreCase));
 
-    public IReadOnlyList<InteractionProviderSnapshot> GetProviders()
+    public async Task<IReadOnlyList<InteractionProviderSnapshot>> GetProvidersAsync(
+        CancellationToken cancellationToken)
     {
-        var ai = _aiProviders.Select(provider => new InteractionProviderSnapshot(
-            "AI",
-            provider.Name,
-            string.Equals(provider.Name, _options.AiProvider, StringComparison.OrdinalIgnoreCase),
-            provider.IsAvailable,
-            provider.IsDevelopment,
-            provider.IsAvailable ? "Ready" : "Unavailable"));
+        var ai = new List<InteractionProviderSnapshot>(_aiProviders.Count);
+        foreach (var provider in _aiProviders)
+        {
+            var selected = string.Equals(provider.Name, _options.AiProvider, StringComparison.OrdinalIgnoreCase);
+            if (selected)
+            {
+                await provider.CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            var state = provider.GetRuntimeState();
+            ai.Add(new InteractionProviderSnapshot(
+                "AI",
+                provider.Name,
+                selected,
+                state.Available,
+                provider.IsDevelopment,
+                state.Status,
+                state.Model,
+                state.Requests,
+                state.Successes,
+                state.Failures,
+                state.Timeouts,
+                state.BusyRejections,
+                state.AverageDurationMilliseconds,
+                state.LastSuccessAtUtc,
+                state.LastFailureAtUtc));
+        }
+
         var tts = _ttsProviders.Select(provider => new InteractionProviderSnapshot(
             "TTS",
             provider.Name,
             string.Equals(provider.Name, _options.TtsProvider, StringComparison.OrdinalIgnoreCase),
             provider.IsAvailable,
             provider.IsDevelopment,
-            provider.IsAvailable ? "Ready" : "Unavailable"));
+            provider.IsAvailable ? "Ready" : "Unavailable",
+            null,
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            null,
+            null));
         return ai.Concat(tts).ToArray();
     }
 }

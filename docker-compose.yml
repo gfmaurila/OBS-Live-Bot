@@ -29,6 +29,7 @@ services:
       YOUTUBE_REFRESH_TOKEN: ${YOUTUBE_REFRESH_TOKEN:-}
       TIKTOK_ENABLED: ${TIKTOK_ENABLED:-false}
       TIKTOK_CHANNEL: ${TIKTOK_CHANNEL:-}
+      Interactions__Ollama__BaseUrl: http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

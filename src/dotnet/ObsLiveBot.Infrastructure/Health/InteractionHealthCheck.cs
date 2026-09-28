@@ -8,27 +8,27 @@ public sealed class InteractionHealthCheck(
     IInteractionProviderRegistry providers,
     IOptions<InteractionOptions> options) : IHealthCheck
 {
-    public Task<HealthCheckResult> CheckHealthAsync(
+    public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
         if (!options.Value.Enabled)
         {
-            return Task.FromResult(HealthCheckResult.Degraded("Interaction subsystem is disabled."));
+            return HealthCheckResult.Degraded("Interaction subsystem is disabled.");
         }
 
         var ai = providers.GetAiProvider();
         var tts = providers.GetTtsProvider();
-        if (ai is null || !ai.IsAvailable)
+        if (ai is null || !await ai.CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false))
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("Configured AI interaction provider is unavailable."));
+            return HealthCheckResult.Degraded("Configured AI interaction provider is unavailable.");
         }
 
         if (tts is null || !tts.IsAvailable)
         {
-            return Task.FromResult(HealthCheckResult.Degraded("Configured TTS provider is unavailable."));
+            return HealthCheckResult.Degraded("Configured TTS provider is unavailable.");
         }
 
-        return Task.FromResult(HealthCheckResult.Healthy("Interaction providers are ready."));
+        return HealthCheckResult.Healthy("Interaction providers are ready.");
     }
 }

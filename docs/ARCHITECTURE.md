@@ -206,3 +206,23 @@ LiveChatEvent / DEV request
 - Falhas de AI, TTS e publisher são representadas no resultado/buffer sem derrubar OBS, chat, API ou n8n.
 - Não há memória persistente, banco, Redis, broker, cloud, execução automática de OBS ou reprodução automática de áudio.
 - `IInteractionEventPublisher` usa `NoOpInteractionEventPublisher`; integrações com n8n, UI, SignalR e OBS permanecem futuras.
+
+## Local AI Engine / Ollama (OBS-LIVE-BOT-06)
+
+```text
+Application: IAiInteractionProvider
+             ^
+             |
+Infrastructure: InteractionProviderRegistry
+               -> OllamaAiInteractionProvider -> HttpClientFactory -> Ollama local
+               -> DevelopmentAiInteractionProvider (fallback explícito)
+```
+
+- Ollama permanece um runtime local do host Windows, independente de n8n; não foi criado container de IA.
+- Application recebe somente contratos de AI e não conhece HTTP, endpoints ou payloads do Ollama.
+- Mensagens `system`, contexto e conteúdo `user` são enviados como roles separados; conteúdo do chat nunca é promovido a instrução de sistema.
+- `SemaphoreSlim` limita a uma inferência e a espera é bounded em duas requisições/2 segundos por padrão. Overload retorna `OLLAMA_BUSY`.
+- Timeout e cancelamento chegam ao `HttpClient`; erros não derrubam API, OBS, Chat ou n8n.
+- O fallback Development é configurável, aparece no `InteractionResult` e nunca mascara o health `Degraded` do provider principal.
+- Estado/health expõem disponibilidade, modelo e contadores sem prompts, conteúdo do usuário ou secrets.
+- TTS permanece Development, sem áudio real ou reprodução no OBS.

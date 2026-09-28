@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-05` estão concluídas. A conexão OBS, Live State, Live Chat Ingestion e a fundação local de AI Interaction/TTS possuem estado bounded em memória, validação, health checks e APIs controladas.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-06` estão concluídas. A conexão OBS, Live State, Live Chat Ingestion, a fundação de interações e a IA local Ollama possuem estado bounded em memória, validação, health checks e APIs controladas.
 
 ## Serviços locais
 
@@ -13,6 +13,7 @@ Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engin
 | OBS Live Bot Swagger | `http://localhost:5080/swagger` |
 | OBS Live Bot Swagger UI | `http://localhost:5080/swagger/index.html` |
 | OBS Live Bot n8n | `http://localhost:5679` |
+| GFM StudioOS Ollama | `http://localhost:11434` |
 
 ## n8n — Desenvolvimento
 
@@ -51,8 +52,9 @@ O subsistema de interações processa eventos normalizados pelo mesmo pipeline d
 
 - `DevelopmentAiInteractionProvider` é determinístico, local e identificado pelo prefixo `[DEV AI]`. Ele **não é uma IA real**.
 - `DevelopmentTextToSpeechProvider` retorna somente metadados simulados. Ele **não gera nem reproduz áudio real**.
-- Providers reais, Ollama, engines TTS locais e providers externos ainda não estão configurados.
-- Nenhuma API paga, Internet, banco, broker, cache distribuído ou novo container é necessário.
+- `OllamaAiInteractionProvider` usa IA real local; `DevelopmentAiInteractionProvider` permanece disponível para testes e fallback explícito.
+- Engines TTS reais e providers externos ainda não estão configurados.
+- Nenhuma API paga, banco, broker, cache distribuído ou novo container é necessário.
 - O endpoint `/api/interactions/dev/test` só é registrado quando `ASPNETCORE_ENVIRONMENT=Development`.
 
 Exemplo de teste DEV:
@@ -69,6 +71,38 @@ Exemplo de teste DEV:
 ```
 
 O resultado `TextAndVoice` confirma a passagem pelo provider TTS DEV, mas não cria arquivo de áudio nem reproduz som na live. Consulte `docs/AI-INTERACTIONS.md` e `docs/TTS.md`.
+
+## IA local
+
+O provider selecionado é `Ollama`, executado no Windows host e acessível localmente em `http://localhost:11434`. O modelo principal é `qwen3:4b-instruct-2507-q4_K_M` (aproximadamente 2,5 GB), escolhido como modelo instruct multilíngue compacto para baixa latência no hardware local. A API em container acessa o mesmo runtime por `host.docker.internal`; o Ollama não faz parte do container n8n.
+
+Verificação do runtime e do modelo:
+
+```powershell
+ollama --version
+ollama list
+curl.exe http://localhost:11434/api/version
+```
+
+Se o runtime não estiver ativo, inicie o aplicativo Ollama para Windows ou execute `ollama serve`. Não exponha a porta 11434 publicamente. O status seguro do provider está disponível em `GET /api/interactions/providers` e o estado selecionado em `GET /api/interactions/state`.
+
+Teste pelo StudioOS em ambiente `Development`:
+
+```http
+POST http://localhost:5080/api/interactions/dev/test
+Content-Type: application/json
+
+{
+  "provider": "Development",
+  "channelId": "local",
+  "userId": "dev-user",
+  "userDisplayName": "Developer",
+  "message": "Responda em uma frase: qual é a sua função nesta live?",
+  "responseMode": "Text"
+}
+```
+
+Esse endpoint continua entrando no pipeline normal; com `Interactions:AiProvider=Ollama`, a resposta informa `aiProviderName: Ollama` e o modelo efetivamente usado. Timeout, concorrência (`1` inferência), fila bounded (`2`) e limite de tokens são configuráveis. `AllowDevelopmentFallback=true` permite fallback identificado ao provider determinístico DEV quando o Ollama falha; a indisponibilidade do Ollama continua visível como `Degraded`. O fallback DEV não é IA real. TTS permanece simulado e nenhum áudio é reproduzido.
 
 ## Arquitetura
 C#/.NET 10 é o núcleo (ASP.NET Core, Vertical Slice, CQRS, MediatR oficial, Ardalis.Result, FluentValidation, Serilog, OpenAPI, Domain Events e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador local.

@@ -16,13 +16,29 @@ public sealed class InteractionOptions
     public InteractionCooldownScope CooldownScope { get; set; } = InteractionCooldownScope.User;
     public string AiProvider { get; set; } = "Development";
     public string TtsProvider { get; set; } = "Development";
+    public bool AllowDevelopmentFallback { get; set; } = true;
+    public OllamaInteractionOptions Ollama { get; set; } = new();
     public int ContextMessageLimit { get; set; } = 5;
     public string ReservedCommandPrefix { get; set; } = "!studio";
     public string SystemInstructions { get; set; } =
-        "You are the local GFM StudioOS development interaction provider. Keep responses concise.";
+        "Você é o assistente local do GFM StudioOS em uma transmissão ao vivo. " +
+        "Responda em português brasileiro, de forma curta, natural e adequada para fala. " +
+        "Não invente ações executadas, não afirme controlar o OBS e não alegue memória que não possui.";
     public string Language { get; set; } = "pt-BR";
     public string? Voice { get; set; }
     public string[] SelfIdentities { get; set; } = [];
+}
+
+public sealed class OllamaInteractionOptions
+{
+    public string BaseUrl { get; set; } = "http://localhost:11434";
+    public string Model { get; set; } = "qwen3:4b-instruct-2507-q4_K_M";
+    public int TimeoutSeconds { get; set; } = 45;
+    public double Temperature { get; set; } = 0.2;
+    public int MaxOutputTokens { get; set; } = 160;
+    public int MaxConcurrentRequests { get; set; } = 1;
+    public int MaxQueuedRequests { get; set; } = 2;
+    public int QueueWaitTimeoutSeconds { get; set; } = 2;
 }
 
 public interface IInteractionOrchestrator
@@ -63,8 +79,11 @@ public interface IAiResponseSanitizer
 public interface IAiInteractionProvider
 {
     string Name { get; }
+    string ModelName { get; }
     bool IsAvailable { get; }
     bool IsDevelopment { get; }
+    AiProviderRuntimeSnapshot GetRuntimeState();
+    Task<bool> CheckAvailabilityAsync(CancellationToken cancellationToken);
     Task<AiInteractionResponse> GenerateAsync(
         AiInteractionRequest request,
         CancellationToken cancellationToken);
@@ -83,8 +102,10 @@ public interface ITextToSpeechProvider
 public interface IInteractionProviderRegistry
 {
     IAiInteractionProvider? GetAiProvider();
+    IAiInteractionProvider? GetDevelopmentAiProvider();
+    bool AllowDevelopmentFallback { get; }
     ITextToSpeechProvider? GetTtsProvider();
-    IReadOnlyList<InteractionProviderSnapshot> GetProviders();
+    Task<IReadOnlyList<InteractionProviderSnapshot>> GetProvidersAsync(CancellationToken cancellationToken);
 }
 
 public interface IInteractionBuffer
@@ -95,7 +116,12 @@ public interface IInteractionBuffer
     IReadOnlyList<InteractionResult> GetRecent(int limit);
     InteractionStateSnapshot GetState(
         bool enabled,
-        bool providersAvailable,
+        bool aiAvailable,
+        bool ttsAvailable,
+        string aiProvider,
+        string aiStatus,
+        string? aiModel,
+        string ttsProvider,
         int cooldownEntries,
         int cooldownCapacity);
 }

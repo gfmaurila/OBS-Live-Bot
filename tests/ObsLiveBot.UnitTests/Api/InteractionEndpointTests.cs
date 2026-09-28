@@ -129,6 +129,7 @@ public sealed class InteractionEndpointTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment(environment);
+            builder.UseSetting("Interactions:AiProvider", "Development");
             builder.ConfigureServices(services =>
             {
                 var hostedServices = services

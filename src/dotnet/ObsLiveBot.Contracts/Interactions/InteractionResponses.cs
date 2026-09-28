@@ -23,6 +23,8 @@ public sealed record InteractionResponse(
     string? AiModelName,
     bool? AiSuccess,
     double? AiDurationMilliseconds,
+    bool AiFallbackUsed,
+    string? PrimaryAiErrorCode,
     string? TtsProviderName,
     bool? TtsSuccess,
     string? AudioFormat,
@@ -44,7 +46,11 @@ public sealed record InteractionStateResponse(
     int BufferCapacity,
     int CooldownEntries,
     int CooldownCapacity,
-    DateTimeOffset? LastInteractionAtUtc);
+    DateTimeOffset? LastInteractionAtUtc,
+    string AiProvider,
+    string AiStatus,
+    string? AiModel,
+    string TtsProvider);
 
 public sealed record InteractionProviderResponse(
     string Kind,
@@ -52,7 +58,16 @@ public sealed record InteractionProviderResponse(
     bool Selected,
     bool Available,
     bool Development,
-    string Status);
+    string Status,
+    string? Model,
+    long Requests,
+    long Successes,
+    long Failures,
+    long Timeouts,
+    long BusyRejections,
+    double? AverageDurationMilliseconds,
+    DateTimeOffset? LastSuccessAtUtc,
+    DateTimeOffset? LastFailureAtUtc);
 
 public sealed record InteractionProvidersResponse(IReadOnlyList<InteractionProviderResponse> Providers);
 

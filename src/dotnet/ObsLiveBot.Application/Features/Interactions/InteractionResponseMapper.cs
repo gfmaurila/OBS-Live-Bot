@@ -26,6 +26,8 @@ internal static class InteractionResponseMapper
         result.AiModelName,
         result.AiSuccess,
         result.AiDuration?.TotalMilliseconds,
+        result.AiFallbackUsed,
+        result.PrimaryAiErrorCode,
         result.TtsProviderName,
         result.TtsSuccess,
         result.AudioFormat,

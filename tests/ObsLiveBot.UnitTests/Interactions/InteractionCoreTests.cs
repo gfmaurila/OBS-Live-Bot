@@ -71,6 +71,44 @@ public sealed class InteractionCoreTests
     }
 
     [Fact]
+    public async Task OllamaFailure_UsesConfiguredDevelopmentFallback()
+    {
+        var primary = new FakeAiProvider(request => new AiInteractionResponse(
+            null, "Ollama", "local-model", TimeSpan.Zero, false, "OLLAMA_UNAVAILABLE",
+            request.CorrelationId, false), "Ollama", false);
+        var fallback = new FakeAiProvider(request => new AiInteractionResponse(
+            "[DEV AI] fallback", "Development", "deterministic-development", TimeSpan.Zero,
+            true, null, request.CorrelationId, true));
+        var harness = Harness(ai: primary, fallbackAi: fallback, allowDevelopmentFallback: true);
+
+        var result = await harness.Orchestrator.ProcessAsync(Event(), InteractionResponseMode.Text, default);
+
+        Assert.Equal(InteractionStatus.Completed, result.Status);
+        Assert.Equal("Development", result.AiProviderName);
+        Assert.True(result.AiFallbackUsed);
+        Assert.Equal("OLLAMA_UNAVAILABLE", result.PrimaryAiErrorCode);
+        Assert.Equal(1, fallback.Calls);
+    }
+
+    [Fact]
+    public async Task OllamaFailure_DoesNotFallbackWhenDisabled()
+    {
+        var primary = new FakeAiProvider(request => new AiInteractionResponse(
+            null, "Ollama", "local-model", TimeSpan.Zero, false, "OLLAMA_UNAVAILABLE",
+            request.CorrelationId, false), "Ollama", false);
+        var fallback = new FakeAiProvider(request => new AiInteractionResponse(
+            "unexpected", "Development", "deterministic-development", TimeSpan.Zero,
+            true, null, request.CorrelationId, true));
+        var harness = Harness(ai: primary, fallbackAi: fallback, allowDevelopmentFallback: false);
+
+        var result = await harness.Orchestrator.ProcessAsync(Event(), InteractionResponseMode.Text, default);
+
+        Assert.Equal(InteractionStatus.Failed, result.Status);
+        Assert.False(result.AiFallbackUsed);
+        Assert.Equal(0, fallback.Calls);
+    }
+
+    [Fact]
     public async Task TtsFailure_IsIsolatedAndPreservesAiResponse()
     {
         var tts = new FakeTtsProvider(request => new TextToSpeechResult(
@@ -236,7 +274,7 @@ public sealed class InteractionCoreTests
     }
 
     [Fact]
-    public void ProviderRegistry_SelectsConfiguredDevelopmentProviders()
+    public async Task ProviderRegistry_SelectsConfiguredDevelopmentProviders()
     {
         var options = Options.Create(new InteractionOptions());
         var registry = new InteractionProviderRegistry(
@@ -246,7 +284,8 @@ public sealed class InteractionCoreTests
 
         Assert.IsType<DevelopmentAiInteractionProvider>(registry.GetAiProvider());
         Assert.IsType<DevelopmentTextToSpeechProvider>(registry.GetTtsProvider());
-        Assert.All(registry.GetProviders(), provider =>
+        var providers = await registry.GetProvidersAsync(default);
+        Assert.All(providers, provider =>
         {
             Assert.True(provider.Selected);
             Assert.True(provider.Available);
@@ -285,6 +324,8 @@ public sealed class InteractionCoreTests
         Action<InteractionOptions>? configure = null,
         FakeAiProvider? ai = null,
         FakeTtsProvider? tts = null,
+        FakeAiProvider? fallbackAi = null,
+        bool allowDevelopmentFallback = false,
         IInteractionEventPublisher? eventPublisher = null,
         RecordingPublisher? mediator = null)
     {
@@ -299,7 +340,7 @@ public sealed class InteractionCoreTests
         tts ??= new FakeTtsProvider(request => new TextToSpeechResult(
             true, "Development", "development/simulated", null, TimeSpan.Zero, null,
             request.CorrelationId, true));
-        var registry = new FakeRegistry(ai, tts);
+        var registry = new FakeRegistry(ai, tts, fallbackAi, allowDevelopmentFallback);
         var orchestrator = new InteractionOrchestrator(
             new InteractionDecisionPolicy(options, time),
             new InteractionCooldownTracker(options, time),
@@ -345,13 +386,21 @@ public sealed class InteractionCoreTests
         FakeAiProvider Ai,
         FakeTtsProvider Tts);
 
-    private sealed class FakeAiProvider(Func<AiInteractionRequest, AiInteractionResponse> response)
+    private sealed class FakeAiProvider(
+        Func<AiInteractionRequest, AiInteractionResponse> response,
+        string name = "Development",
+        bool isDevelopment = true)
         : IAiInteractionProvider
     {
         public int Calls { get; private set; }
-        public string Name => "Development";
+        public string Name => name;
+        public string ModelName => "test-model";
         public bool IsAvailable => true;
-        public bool IsDevelopment => true;
+        public bool IsDevelopment => isDevelopment;
+        public AiProviderRuntimeSnapshot GetRuntimeState() =>
+            new(true, "Ready", ModelName, Calls, Calls, 0, 0, 0, 0, null, null);
+        public Task<bool> CheckAvailabilityAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(true);
         public Task<AiInteractionResponse> GenerateAsync(
             AiInteractionRequest request,
             CancellationToken cancellationToken)
@@ -377,12 +426,21 @@ public sealed class InteractionCoreTests
         }
     }
 
-    private sealed class FakeRegistry(IAiInteractionProvider ai, ITextToSpeechProvider tts)
+    private sealed class FakeRegistry(
+        IAiInteractionProvider ai,
+        ITextToSpeechProvider tts,
+        IAiInteractionProvider? fallbackAi = null,
+        bool allowDevelopmentFallback = false)
         : IInteractionProviderRegistry
     {
         public IAiInteractionProvider GetAiProvider() => ai;
+        public IAiInteractionProvider? GetDevelopmentAiProvider() => fallbackAi ??
+            (ai.IsDevelopment ? ai : null);
+        public bool AllowDevelopmentFallback => allowDevelopmentFallback;
         public ITextToSpeechProvider GetTtsProvider() => tts;
-        public IReadOnlyList<InteractionProviderSnapshot> GetProviders() => [];
+        public Task<IReadOnlyList<InteractionProviderSnapshot>> GetProvidersAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<InteractionProviderSnapshot>>([]);
     }
 
     private sealed class RecordingPublisher : IPublisher

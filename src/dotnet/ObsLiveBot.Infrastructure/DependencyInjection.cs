@@ -92,6 +92,19 @@ public static class DependencyInjection
         services.AddSingleton<IAiResponseSanitizer, AiResponseSanitizer>();
         services.AddSingleton<IInteractionOrchestrator, InteractionOrchestrator>();
         services.AddSingleton<IAiInteractionProvider, DevelopmentAiInteractionProvider>();
+        services.AddHttpClient("Ollama", (provider, client) =>
+        {
+            var options = provider.GetRequiredService<IOptions<InteractionOptions>>().Value.Ollama;
+            client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        });
+        services.AddSingleton<OllamaAiInteractionProvider>(provider => new OllamaAiInteractionProvider(
+            provider.GetRequiredService<IHttpClientFactory>().CreateClient("Ollama"),
+            provider.GetRequiredService<IOptions<InteractionOptions>>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<OllamaAiInteractionProvider>>()));
+        services.AddSingleton<IAiInteractionProvider>(provider =>
+            provider.GetRequiredService<OllamaAiInteractionProvider>());
         services.AddSingleton<ITextToSpeechProvider, DevelopmentTextToSpeechProvider>();
         services.AddSingleton<IInteractionProviderRegistry, InteractionProviderRegistry>();
         services.AddSingleton<IInteractionEventPublisher, NoOpInteractionEventPublisher>();

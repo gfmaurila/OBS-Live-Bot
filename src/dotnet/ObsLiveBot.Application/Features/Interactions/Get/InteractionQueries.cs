@@ -25,16 +25,27 @@ public sealed class GetInteractionStateQueryHandler(
     IOptions<InteractionOptions> options)
     : IRequestHandler<GetInteractionStateQuery, Result<InteractionStateResponse>>
 {
-    public Task<Result<InteractionStateResponse>> Handle(
+    public async Task<Result<InteractionStateResponse>> Handle(
         GetInteractionStateQuery request,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var ai = providers.GetAiProvider();
         var tts = providers.GetTtsProvider();
-        var available = ai?.IsAvailable == true && tts?.IsAvailable == true;
-        var state = buffer.GetState(options.Value.Enabled, available, cooldown.Count, cooldown.Capacity);
-        return Task.FromResult(Result.Success(new InteractionStateResponse(
+        var aiAvailable = ai is not null &&
+            await ai.CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false);
+        var aiState = ai?.GetRuntimeState();
+        var ttsAvailable = tts?.IsAvailable == true;
+        var state = buffer.GetState(
+            options.Value.Enabled,
+            aiAvailable,
+            ttsAvailable,
+            ai?.Name ?? options.Value.AiProvider,
+            aiState?.Status ?? "Unavailable",
+            aiState?.Model,
+            tts?.Name ?? options.Value.TtsProvider,
+            cooldown.Count,
+            cooldown.Capacity);
+        return Result.Success(new InteractionStateResponse(
             state.Status,
             state.Total,
             state.Ignored,
@@ -44,7 +55,11 @@ public sealed class GetInteractionStateQueryHandler(
             state.BufferCapacity,
             state.CooldownEntries,
             state.CooldownCapacity,
-            state.LastInteractionAtUtc)));
+            state.LastInteractionAtUtc,
+            state.AiProvider,
+            state.AiStatus,
+            state.AiModel,
+            state.TtsProvider));
     }
 }
 
@@ -66,20 +81,29 @@ public sealed class GetRecentInteractionsQueryHandler(IInteractionBuffer buffer)
 public sealed class GetInteractionProvidersQueryHandler(IInteractionProviderRegistry providers)
     : IRequestHandler<GetInteractionProvidersQuery, Result<InteractionProvidersResponse>>
 {
-    public Task<Result<InteractionProvidersResponse>> Handle(
+    public async Task<Result<InteractionProvidersResponse>> Handle(
         GetInteractionProvidersQuery request,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var response = providers.GetProviders()
+        var snapshots = await providers.GetProvidersAsync(cancellationToken).ConfigureAwait(false);
+        var response = snapshots
             .Select(provider => new InteractionProviderResponse(
                 provider.Kind,
                 provider.Name,
                 provider.Selected,
                 provider.Available,
                 provider.Development,
-                provider.Status))
+                provider.Status,
+                provider.Model,
+                provider.Requests,
+                provider.Successes,
+                provider.Failures,
+                provider.Timeouts,
+                provider.BusyRejections,
+                provider.AverageDurationMilliseconds,
+                provider.LastSuccessAtUtc,
+                provider.LastFailureAtUtc))
             .ToArray();
-        return Task.FromResult(Result.Success(new InteractionProvidersResponse(response)));
+        return Result.Success(new InteractionProvidersResponse(response));
     }
 }

@@ -91,6 +91,8 @@ public sealed record InteractionResult(
     string? AiModelName,
     bool? AiSuccess,
     TimeSpan? AiDuration,
+    bool AiFallbackUsed,
+    string? PrimaryAiErrorCode,
     string? TtsProviderName,
     bool? TtsSuccess,
     string? AudioFormat,
@@ -112,7 +114,24 @@ public sealed record InteractionStateSnapshot(
     int BufferCapacity,
     int CooldownEntries,
     int CooldownCapacity,
-    DateTimeOffset? LastInteractionAtUtc);
+    DateTimeOffset? LastInteractionAtUtc,
+    string AiProvider,
+    string AiStatus,
+    string? AiModel,
+    string TtsProvider);
+
+public sealed record AiProviderRuntimeSnapshot(
+    bool Available,
+    string Status,
+    string? Model,
+    long Requests,
+    long Successes,
+    long Failures,
+    long Timeouts,
+    long BusyRejections,
+    double? AverageDurationMilliseconds,
+    DateTimeOffset? LastSuccessAtUtc,
+    DateTimeOffset? LastFailureAtUtc);
 
 public sealed record InteractionProviderSnapshot(
     string Kind,
@@ -120,4 +139,13 @@ public sealed record InteractionProviderSnapshot(
     bool Selected,
     bool Available,
     bool Development,
-    string Status);
+    string Status,
+    string? Model,
+    long Requests,
+    long Successes,
+    long Failures,
+    long Timeouts,
+    long BusyRejections,
+    double? AverageDurationMilliseconds,
+    DateTimeOffset? LastSuccessAtUtc,
+    DateTimeOffset? LastFailureAtUtc);

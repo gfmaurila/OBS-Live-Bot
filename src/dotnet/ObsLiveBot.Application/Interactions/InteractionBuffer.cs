@@ -54,13 +54,18 @@ public sealed class InteractionBuffer(IOptions<InteractionOptions> options) : II
 
     public InteractionStateSnapshot GetState(
         bool enabled,
-        bool providersAvailable,
+        bool aiAvailable,
+        bool ttsAvailable,
+        string aiProvider,
+        string aiStatus,
+        string? aiModel,
+        string ttsProvider,
         int cooldownEntries,
         int cooldownCapacity)
     {
         lock (_gate)
         {
-            var status = !enabled ? "Unavailable" : providersAvailable ? "Ready" : "Degraded";
+            var status = !enabled ? "Unavailable" : aiAvailable && ttsAvailable ? "Ready" : "Degraded";
             return new InteractionStateSnapshot(
                 status,
                 _total,
@@ -71,7 +76,11 @@ public sealed class InteractionBuffer(IOptions<InteractionOptions> options) : II
                 Capacity,
                 cooldownEntries,
                 cooldownCapacity,
-                _lastInteractionAtUtc);
+                _lastInteractionAtUtc,
+                aiProvider,
+                aiStatus,
+                aiModel,
+                ttsProvider);
         }
     }
 }

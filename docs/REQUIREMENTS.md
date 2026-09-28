@@ -4,7 +4,7 @@
 Plataforma local Windows para OBS com Live Engine, Content Engine, Command Center e Configuration/Backup/Restore.
 
 ## Arquitetura obrigatória C#
-ASP.NET Core, Vertical Slice Architecture, CQRS, Mediator, Domain Model, Domain Events, EF Core/Migrations, Validation, Mapping, DI e structured logging.
+ASP.NET Core, Vertical Slice Architecture, CQRS, MediatR oficial, Domain Model, Domain Events, Validation, Mapping, DI e structured logging. EF Core fica disponível somente quando uma feature exigir persistência; nenhum provider de banco é obrigatório.
 
 ## Requisitos funcionais
 - OBS WebSocket e detecção de estado;
@@ -20,7 +20,7 @@ ASP.NET Core, Vertical Slice Architecture, CQRS, Mediator, Domain Model, Domain 
 - restore seguro com OBS fechado, backup prévio e rollback.
 
 ## Não funcionais
-Operação local por padrão, componentes substituíveis, logs sem segredos, persistência local, validação, integridade, idempotência onde aplicável e nenhuma escrita acidental no OBS.
+Operação local por padrão, custo de infraestrutura zero, componentes substituíveis, logs sem segredos, persistência somente quando necessária, validação, integridade, idempotência onde aplicável e nenhuma escrita acidental no OBS.
 
 ## Regra de execução atual
 A presença destes requisitos não autoriza implementação antecipada. A próxima task é `OBS-LIVE-BOT-02 — OBS WebSocket Connection`.

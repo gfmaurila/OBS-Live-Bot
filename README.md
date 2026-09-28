@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00`, `OBS-LIVE-BOT-01`, `OBS-LIVE-BOT-02` e **OBS-LIVE-BOT-03 — Live State Detection** estão concluídas. A conexão autenticada, detecção de eventos em tempo real, estado sincronizado, reconnect/resync, health checks e endpoints foram validados com OBS WebSocket 5.x.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-04` estão concluídas. A conexão OBS, Live State e a fundação local de Live Chat Ingestion possuem estado em memória, lifecycle isolado, validação, deduplicação, health checks e APIs read-only.
 
 ## Serviços locais
 
@@ -12,10 +12,12 @@ Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engin
 | OBS Live Bot API | `http://localhost:5080` |
 | OBS Live Bot n8n | `http://localhost:5679` |
 
-Endpoints de leitura: `GET /health`, `GET /api/obs/status`, `GET /api/obs/live-state` e `GET /api/obs/events?limit=20`.
+Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages` e `/api/chat/events`.
 
 ## Arquitetura
-C#/.NET 10 é o núcleo (ASP.NET Core, Vertical Slice, CQRS, MediatR oficial, Ardalis.Result, FluentValidation, EF Core SQL Server, Serilog, OpenAPI, Domain Events e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador.
+C#/.NET 10 é o núcleo (ASP.NET Core, Vertical Slice, CQRS, MediatR oficial, Ardalis.Result, FluentValidation, Serilog, OpenAPI, Domain Events e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador local.
+
+O projeto é local-first e busca custo de infraestrutura zero. EF Core fica disponível quando uma feature realmente exigir persistência, sem provider obrigatório; estado e buffers em memória são preferidos enquanto forem suficientes. Não há Redis, RabbitMQ, Kafka, MongoDB ou banco obrigatório.
 
 Leia `PROJECT.md`, `PROJECT-STATE.md`, `AI-WORKFLOW.md` e `docs/ARCHITECTURE.md`.
 

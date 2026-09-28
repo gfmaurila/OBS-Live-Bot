@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <IntermediateOutputPath>obj-api/$(Configuration)/$(TargetFramework)/</IntermediateOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj-api/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />

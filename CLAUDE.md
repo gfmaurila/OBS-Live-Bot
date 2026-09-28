@@ -5,7 +5,9 @@ Leia nesta ordem: `PROJECT.md`, `PROJECT-STATE.md`, `AI-WORKFLOW.md`, `docs/ARCH
 Não recrie scaffold nem reexecute tasks concluídas. Execute somente a task atual.
 
 ## Arquitetura obrigatória
-C#/.NET é o núcleo: ASP.NET Core, Vertical Slice, CQRS, Mediator, Domain Model, Domain Events, EF Core/Migrations, validação, mapping, DI e structured logging. Python é serviço especializado de IA/mídia. C++ é camada nativa/performance somente com justificativa. n8n é orquestrador.
+C#/.NET é o núcleo: ASP.NET Core, Vertical Slice, CQRS, MediatR, Domain Model, Domain Events, validação, mapping, DI e structured logging. EF Core é opcional e somente deve ser usado quando a feature exigir persistência, sem provider obrigatório. Python é serviço especializado de IA/mídia. C++ é camada nativa/performance somente com justificativa. n8n é orquestrador local.
+
+Aplicar `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST`, `NO PREMATURE INFRASTRUCTURE` e `NO PREMATURE MICROSERVICES`. Não adicionar banco, Redis, RabbitMQ, Kafka, MongoDB, cloud ou containers preventivamente. Ler `docs/INFRASTRUCTURE-COST-POLICY.md`.
 
 Endpoints finos -> mapping -> Command/Query -> Mediator/pipeline -> Handler -> Domain/Infrastructure -> mapping -> Response. Commands alteram estado; Queries não. Domain Events desacoplam efeitos de fatos relevantes.
 

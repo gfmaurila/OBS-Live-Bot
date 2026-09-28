@@ -6,7 +6,7 @@ Fluxo compartilhado por Codex, Claude Code e GitHub Copilot.
 1. Ler `PROJECT.md`.
 2. Ler `PROJECT-STATE.md`.
 3. Ler `docs/ARCHITECTURE.md` e `docs/EXECUTION-PLAN.md`.
-4. Ler documentação relacionada.
+4. Ler `docs/INFRASTRUCTURE-COST-POLICY.md` e documentação relacionada.
 5. Ler a task solicitada.
 6. Inspecionar o estado real do repositório.
 
@@ -24,6 +24,8 @@ RESEARCH -> REQUIREMENTS -> ARCHITECTURE -> PLAN -> IMPLEMENT -> TEST -> REVIEW 
 - n8n somente para orquestração.
 - preservar comportamento fora do escopo e alterações locais.
 - manter integrações desacopladas.
+- aplicar local-first, custo zero e a solução mais simples que satisfaça o requisito; não adicionar persistência, broker, cache distribuído, cloud ou microservices sem necessidade concreta.
+- EF Core é opcional e não implica provider obrigatório. SQLite é a preferência inicial para persistência relacional local simples; PostgreSQL deve ser avaliado para cenários maiores/multiusuário.
 - segredos fora do Git; backups com segredos devem ser protegidos.
 - não escrever no OBS sem autorização explícita da task.
 

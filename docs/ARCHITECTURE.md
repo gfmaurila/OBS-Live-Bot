@@ -31,13 +31,23 @@
 - FluentValidation
 - Domain Model
 - Domain Events
-- Entity Framework Core SQL Server + Migrations
+- Entity Framework Core disponível quando necessário, sem provider obrigatório
 - Validation via pipeline
 - Mapping entre Request/Command/Domain/Response
 - Dependency Injection
 - Serilog structured logging
 - Swagger / OpenAPI
 - Docker + Docker Compose
+
+## Política de infraestrutura
+
+- Desenvolvimento `LOCAL FIRST`, com `ZERO INFRASTRUCTURE COST`.
+- Usar estado e buffers thread-safe em memória enquanto uma única instância local atender ao requisito.
+- Não criar DbContext, migrations, repositories ou banco preventivamente.
+- Quando persistência relacional simples e local for necessária, avaliar SQLite primeiro; para cenários maiores/multiusuário, avaliar PostgreSQL.
+- Redis, RabbitMQ, Kafka, MongoDB, cloud e novos containers exigem problema concreto e justificativa técnica.
+- MediatR é o mecanismo de eventos internos no mesmo processo; n8n permanece orquestrador local.
+- Evitar microservices prematuros e usar o componente mais simples que satisfaça a feature.
 
 ## Fluxo de slice
 ```text
@@ -150,3 +160,24 @@ OBS WebSocket 5.x
 - A sequence é monotônica por conexão. Um reconnect cria novo `ConnectionId`, preserva o último snapshot como stale e executa full resync antes de voltar a synchronized.
 - Eventos equivalentes ao estado atual são deduplicados.
 - O buffer mantém no máximo 100 eventos em memória; não há persistência nesta task.
+
+## Live Chat Ingestion (OBS-LIVE-BOT-04)
+
+```text
+Twitch / YouTube / TikTok / futuros providers
+  -> adapters isolados em Infrastructure
+     -> normalização + FluentValidation
+        -> deduplicação limitada + sequence
+           -> MediatR
+              -> LiveChatBuffer limitado em memória
+                 -> APIs read-only
+              -> ILiveChatEventPublisher
+                 -> n8n futuro, sem acoplamento
+```
+
+- Domain e Application não dependem de SDKs de providers.
+- O registry usa `LiveChatProviderType`, sem service locator genérico ou strings espalhadas.
+- O hosted service isola lifecycle, reconnect e falhas por provider.
+- O buffer padrão contém 500 eventos e remove o mais antigo ao atingir a capacidade.
+- Mensagens e eventos compartilham o mesmo armazenamento; endpoints aplicam filtros de leitura.
+- Não existe persistência, database, Redis, broker, novo microservice ou integração cloud.

@@ -2,8 +2,10 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using ObsLiveBot.Api.Configuration;
+using ObsLiveBot.Api.Errors;
 using ObsLiveBot.Api.Features.Obs.GetStatus;
 using ObsLiveBot.Api.Features.Obs.LiveState;
+using ObsLiveBot.Api.Features.Chat;
 using ObsLiveBot.Application.Features.Obs.GetStatus;
 using ObsLiveBot.Application.Validation;
 using ObsLiveBot.Infrastructure;
@@ -43,13 +45,17 @@ builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssemblyContaining<GetObsStatusQuery>();
     configuration.AddOpenBehavior(typeof(ValidationBehavior<,>));
 });
-builder.Services.AddValidatorsFromAssemblyContaining<GetObsStatusQuery>();
+builder.Services.AddValidatorsFromAssemblyContaining<GetObsStatusQuery>(ServiceLifetime.Singleton);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
 builder.Services.AddObsInfrastructure();
+builder.Services.AddLiveChatInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
+app.UseExceptionHandler();
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -61,6 +67,9 @@ app.MapGet(
         var obs = report.Entries.TryGetValue("obs", out var obsEntry)
             ? obsEntry.Status.ToString().ToLowerInvariant()
             : "unknown";
+        var chat = report.Entries.TryGetValue("chat", out var chatEntry)
+            ? chatEntry.Status.ToString().ToLowerInvariant()
+            : "unknown";
         var status = report.Status switch
         {
             HealthStatus.Healthy => "healthy",
@@ -69,7 +78,7 @@ app.MapGet(
         };
 
         return Results.Json(
-            new { service = "obs-live-bot", status, obs },
+            new { service = "obs-live-bot", status, obs, chat },
             statusCode: report.Status == HealthStatus.Unhealthy
                 ? StatusCodes.Status503ServiceUnavailable
                 : StatusCodes.Status200OK);
@@ -77,6 +86,7 @@ app.MapGet(
 
 app.MapObsStatusEndpoint();
 app.MapObsLiveStateEndpoints();
+app.MapLiveChatEndpoints();
 app.Run();
 
 public partial class Program;

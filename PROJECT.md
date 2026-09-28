@@ -4,13 +4,16 @@
 Plataforma local Windows para OBS Studio que reúne automação de live, chat, TTS, IA opcional, criação de conteúdo, Command Center e backup/restore integral do ambiente OBS do usuário.
 
 ## Arquitetura oficial
-O núcleo é C#/.NET com ASP.NET Core, Vertical Slice Architecture, CQRS, Mediator, Domain Model, Domain Events, EF Core/Migrations, validação e mapping. Python é reservado a IA/ML e processamento especializado de mídia. C++ é reservado a integração nativa e workloads de baixa latência/alto desempenho quando houver justificativa técnica. n8n é orquestrador, nunca fonte de verdade do domínio.
+O núcleo é C#/.NET com ASP.NET Core, Vertical Slice Architecture, CQRS, MediatR, Domain Model, Domain Events, validação e mapping. Python é reservado a IA/ML e processamento especializado de mídia. C++ é reservado a integração nativa e workloads de baixa latência/alto desempenho quando houver justificativa técnica. n8n é orquestrador local, nunca fonte de verdade do domínio.
+
+## Política de infraestrutura
+O projeto segue `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST` e `NO PREMATURE INFRASTRUCTURE`. Estado e buffers permanecem em memória quando isso satisfaz a feature. EF Core está disponível somente quando houver necessidade concreta de persistência; nenhum provider de banco é obrigatório. SQLite é a preferência inicial para persistência relacional local simples e PostgreSQL deve ser avaliado para cenários maiores ou multiusuário. Redis, RabbitMQ, Kafka, MongoDB, cloud e novos serviços só podem ser adicionados mediante requisito explícito e justificativa técnica.
 
 ## Estado
 Projeto em andamento. Não reinicializar, recriar a fundação ou reexecutar tasks concluídas sem solicitação explícita.
 
 ## Fonte de verdade
-`PROJECT-STATE.md`, `AI-WORKFLOW.md`, `docs/` e a task solicitada.
+`PROJECT-STATE.md`, `AI-WORKFLOW.md`, `docs/INFRASTRUCTURE-COST-POLICY.md`, demais documentos em `docs/` e a task solicitada.
 
 ## Compatibilidade multi-IA
 - Codex: `AGENTS.md`

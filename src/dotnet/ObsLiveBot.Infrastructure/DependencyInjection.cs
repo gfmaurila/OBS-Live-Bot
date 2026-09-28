@@ -1,8 +1,11 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Application.LiveState;
+using ObsLiveBot.Application.LiveChat;
+using ObsLiveBot.Infrastructure.Chat;
 using ObsLiveBot.Infrastructure.Configuration;
 using ObsLiveBot.Infrastructure.Events;
 using ObsLiveBot.Infrastructure.Health;
@@ -28,5 +31,65 @@ public static class DependencyInjection
         services.AddHostedService(provider => provider.GetRequiredService<ObsConnectionManager>());
         services.AddHealthChecks().AddCheck<ObsHealthCheck>("obs");
         return services;
+    }
+
+    public static IServiceCollection AddLiveChatInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<LiveChatOptions>()
+            .Bind(configuration.GetSection(LiveChatOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<LiveChatOptions>, LiveChatOptionsValidator>();
+
+        services
+            .AddOptions<LiveChatProvidersOptions>()
+            .Bind(configuration.GetSection(LiveChatProvidersOptions.SectionName))
+            .Configure(options =>
+            {
+                ApplyEnvironment(options.Twitch, "TWITCH");
+                ApplyEnvironment(options.YouTube, "YOUTUBE");
+                ApplyEnvironment(options.TikTok, "TIKTOK");
+            });
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<ILiveChatBuffer, LiveChatBuffer>();
+        services.AddSingleton<ILiveChatDeduplicator, LiveChatDeduplicator>();
+        services.AddSingleton<ILiveChatEventNormalizer, LiveChatEventNormalizer>();
+        services.AddSingleton<ILiveChatIngestionPipeline, LiveChatIngestionPipeline>();
+        services.AddSingleton<ILiveChatEventPublisher, NoOpLiveChatEventPublisher>();
+        services.AddSingleton<ILiveChatReconnectDelay, ProgressiveLiveChatReconnectDelay>();
+
+        services.AddSingleton<TwitchLiveChatProvider>();
+        services.AddSingleton<YouTubeLiveChatProvider>();
+        services.AddSingleton<TikTokLiveChatProvider>();
+        services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<TwitchLiveChatProvider>());
+        services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<YouTubeLiveChatProvider>());
+        services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<TikTokLiveChatProvider>());
+        services.AddSingleton<ILiveChatProviderRegistry, LiveChatProviderRegistry>();
+        services.AddHostedService<LiveChatProviderHostedService>();
+        services.AddHealthChecks().AddCheck<LiveChatHealthCheck>("chat");
+        return services;
+    }
+
+    private static void ApplyEnvironment(LiveChatProviderConfiguration options, string prefix)
+    {
+        if (bool.TryParse(Environment.GetEnvironmentVariable($"{prefix}_ENABLED"), out var enabled))
+        {
+            options.Enabled = enabled;
+        }
+
+        options.Channel = ReadEnvironment($"{prefix}_CHANNEL", options.Channel);
+        options.ClientId = ReadEnvironment($"{prefix}_CLIENT_ID", options.ClientId);
+        options.ClientSecret = ReadEnvironment($"{prefix}_CLIENT_SECRET", options.ClientSecret);
+        options.AccessToken = ReadEnvironment($"{prefix}_ACCESS_TOKEN", options.AccessToken);
+        options.RefreshToken = ReadEnvironment($"{prefix}_REFRESH_TOKEN", options.RefreshToken);
+    }
+
+    private static string? ReadEnvironment(string name, string? currentValue)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrEmpty(value) ? currentValue : value;
     }
 }

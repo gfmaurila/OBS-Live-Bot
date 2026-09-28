@@ -169,6 +169,19 @@ public sealed class ObsLiveStateTrackerTests
         Assert.DoesNotContain("secret", json, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(-1, false)]
+    [InlineData(101, false)]
+    [InlineData(1, true)]
+    [InlineData(100, true)]
+    public async Task RecentEventsLimit_ValidatesSupportedRange(int limit, bool expectedValid)
+    {
+        var result = await new GetRecentObsEventsQueryValidator().ValidateAsync(new GetRecentObsEventsQuery(limit));
+
+        Assert.Equal(expectedValid, result.IsValid);
+    }
+
     private static ObsLiveStateTracker CreateTracker() => new(new CollectingPublisher(), new CollectingBridge(), TimeProvider.System, NullLogger<ObsLiveStateTracker>.Instance);
 
     private static Task SynchronizeAsync(ObsLiveStateTracker tracker) => tracker.SynchronizeAsync(

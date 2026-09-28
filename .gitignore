@@ -64,3 +64,6 @@ backups/*
 
 # n8n runtime journals
 data/n8n/crash.journal
+
+# n8n runtime state (database, credentials, owner configuration, logs and encryption key)
+/data/n8n/

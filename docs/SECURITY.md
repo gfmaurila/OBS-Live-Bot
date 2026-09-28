@@ -3,6 +3,15 @@
 ## Segredos de execução
 `.env` e variantes locais ficam fora do Git. Nunca hardcode/versione tokens, senhas ou chaves. Logs não registram segredos.
 
+## Chave de criptografia do n8n
+
+- `N8N_ENCRYPTION_KEY` deve ser gerada com CSPRNG e existir somente no `.env` local ignorado.
+- `N8N_HMAC_SIGNATURE_SECRET`, `N8N_BINARY_DATA_SIGNING_SECRET` e `N8N_USER_MANAGEMENT_JWT_SECRET` também ficam no `.env` local. Elas desacoplam assinaturas operacionais da chave mestra e permitem substituir com segurança uma chave de instância comprometida.
+- `data/n8n` é estado de runtime sensível: pode conter banco, owner, credenciais, logs e cópia local da chave. A árvore inteira fica fora do Git.
+- Troca de chave exige backup protegido e, quando existirem credenciais, exportação descriptografada temporária pelo CLI oficial seguida de importação com a nova chave.
+- Exports descriptografados são temporários, nunca versionados e devem ser removidos imediatamente após a validação.
+- Uma chave presente no histórico Git é considerada comprometida e deve ser substituída; remover apenas o arquivo do `HEAD` não é suficiente.
+
 ## Backups OBS
 O requisito funcional é preservar integralmente o ambiente OBS do usuário, inclusive credenciais que estejam armazenadas dentro de `OBS_CONFIG_ROOT` e sejam copiáveis. Portanto, backups podem conter segredos e devem ser tratados como artefatos sensíveis: criptografia/proteção, acesso restrito, integridade e exclusão do Git.
 

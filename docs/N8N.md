@@ -68,12 +68,18 @@ O mapeamento do OBS Live Bot é `127.0.0.1:5679:5678`. A porta interna padrão d
 
 O bind mount `data/n8n:/home/node/.n8n` preserva banco local, configuração e estado quando o container é reiniciado ou recriado com `docker compose down` seguido de `docker compose up -d`.
 
+`data/n8n` é exclusivamente runtime local e permanece integralmente ignorado pelo Git. Isso inclui `config`, SQLite/WAL/SHM, registros de credenciais, owner, logs e nodes instalados localmente.
+
 ## Segurança
 
 - Não armazenar credenciais em workflows versionados.
 - Não publicar a porta do n8n em interfaces externas por padrão.
 - Não inserir segredos no `docker-compose.yml`.
 - Usar `.env` local e mecanismos de credenciais do n8n.
+- Definir `N8N_ENCRYPTION_KEY` com valor CSPRNG forte somente no `.env` local. `.env.example` mantém apenas o nome vazio da variável.
+- Definir também `N8N_HMAC_SIGNATURE_SECRET`, `N8N_BINARY_DATA_SIGNING_SECRET` e `N8N_USER_MANAGEMENT_JWT_SECRET` com valores CSPRNG independentes. Os valores reais permanecem somente no `.env`.
+- Antes de rotacionar a chave, criar backup protegido do diretório `data/n8n` e verificar se existem credenciais com o CLI oficial.
+- Quando houver credenciais, usar `n8n export:credentials --all --decrypted` apenas em armazenamento temporário protegido e reimportar com `n8n import:credentials` após ativar a nova chave. Nunca registrar o payload.
 - Revisar uma versão fixa da imagem antes de uso operacional.
 
 ## Smoke workflow

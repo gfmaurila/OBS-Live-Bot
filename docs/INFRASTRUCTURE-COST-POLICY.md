@@ -38,6 +38,8 @@ Enquanto o StudioOS operar localmente em instância única, preferir estruturas 
 
 O `obs-live-bot-n8n` permanece local via Docker, sem n8n Cloud. Ele orquestra integrações e não substitui Domain, Application, MediatR nem a fonte de verdade do sistema.
 
+Sua chave de criptografia é fornecida por `N8N_ENCRYPTION_KEY` no `.env` local ignorado. Banco, configuração, credenciais, owner e demais artefatos de `data/n8n` são estado sensível de runtime e não devem ser versionados.
+
 ## Checklist de adoção
 
 Antes de adicionar infraestrutura, documentar:

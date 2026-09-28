@@ -14,3 +14,12 @@ n8n permanece local em `127.0.0.1:5679` por padrão. Exposição externa exige a
 
 ## Portabilidade
 Credenciais protegidas por Windows/DPAPI/OAuth/provedor podem exigir reautenticação após formatação. O sistema deve relatar isso sem remover deliberadamente credenciais do backup.
+
+## OBS WebSocket
+
+- `OBS_WEBSOCKET_PASSWORD` é opcional e somente pode vir do ambiente local/`.env` ignorado.
+- Senha vazia é válida quando o `Hello` do OBS WebSocket não anuncia autenticação.
+- Se o servidor anunciar um desafio, o cliente usa o algoritmo challenge/salt do protocolo 5.x; sem senha, falha de forma segura.
+- Logs registram somente códigos operacionais e tipos de erro, nunca senha, challenge, salt ou resposta de autenticação.
+- `.dockerignore` exclui `.env`, dados do n8n, logs e backups do contexto da imagem.
+- Respostas de `/health` e `/api/obs/status` não possuem campos de credencial.

@@ -106,3 +106,22 @@ tests/e2e/
 
 ## Regra OBS_CONFIG_ROOT
 Read-only por padrão. Backup pode ler/copiar toda a árvore. Restore/escrita somente em task explícita, com OBS fechado, validação, backup de segurança e rollback.
+
+## Integração OBS WebSocket (OBS-LIVE-BOT-02)
+
+```text
+n8n (orquestrador)
+  -> OBS Live Bot API
+     -> Query/Mediator -> IObsClient
+        -> ObsConnectionManager
+           -> ObsWebSocketClient
+              -> OBS WebSocket 5.x
+                 -> OBS Studio
+```
+
+- `ObsLiveBot.Domain` contém estado de conexão, snapshot de runtime e eventos, sem dependência WebSocket.
+- `ObsLiveBot.Application` contém contratos, query/handler e mediator.
+- `ObsLiveBot.Infrastructure` possui Options, protocolo WebSocket, connection manager, reconexão e health check.
+- `ObsLiveBot.Api` expõe somente leitura em `/api/obs/status` e `/health`.
+- A conexão é única e reutilizável; operações não abrem sockets independentes.
+- Eventos `ObsConnected`, `ObsDisconnected`, `ObsReconnecting` e `ObsConnectionFailed` permitem extensão desacoplada.

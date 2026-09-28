@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../ObsLiveBot.Domain/ObsLiveBot.Domain.csproj" />
+    <ProjectReference Include="../ObsLiveBot.Contracts/ObsLiveBot.Contracts.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

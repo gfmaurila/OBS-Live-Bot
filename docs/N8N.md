@@ -79,3 +79,9 @@ O bind mount `data/n8n:/home/node/.n8n` preserva banco local, configuração e e
 ## Smoke workflow
 
 O workflow `OBS Live Bot - Smoke Test` deve ser criado pela interface oficial após a configuração inicial do proprietário, caso necessário. Não manipular diretamente o banco nem contornar autenticação para criá-lo.
+
+## Correção de runtime na OBS-LIVE-BOT-02
+
+O restart loop observado era causado por um container antigo com bind mounts apontando para `D:\Empresa\GFMaurila\projetos\OBS-Live-Bot`, caminho que não representa o repositório atual. O n8n recebia `EACCES` ao gravar `/home/node/.n8n/config`.
+
+Os dados de `data/n8n` foram preservados em backup local ignorado pelo Git e somente `obs-live-bot-n8n` foi recriado a partir de `D:\OBS-Live\OBS-Live-Bot`. O GFM TruckHub não foi alterado.

@@ -1,32 +1,63 @@
 # Integração com OBS
 
-## Princípio
+## Fluxo
 
-O OBS Studio é responsável pela transmissão. O OBS Live Bot deve integrar-se por meio do OBS WebSocket, evitando acesso direto ou alterações nos arquivos internos do OBS.
+```text
+OBS Live Bot
+    ↓
+ObsConnectionManager / IObsClient
+    ↓
+ObsWebSocketClient
+    ↓
+OBS WebSocket 5.x
+    ↓
+OBS Studio
+```
 
-## Configuração prevista
+O n8n permanece apenas como orquestrador. A conexão, autenticação, leitura e reconexão pertencem ao serviço C#.
+
+## Configuração
 
 ```dotenv
-OBS_CONFIG_ROOT=C:\Users\gfmau\AppData\Roaming\obs-studio
-OBS_HOST=host.docker.internal
+OBS_WEBSOCKET_HOST=host.docker.internal
 OBS_WEBSOCKET_PORT=4455
 OBS_WEBSOCKET_PASSWORD=
 ```
 
-- `OBS_CONFIG_ROOT` é somente uma referência local e deve permanecer **read-only**.
-- `OBS_HOST` permite que um container futuro alcance o host Windows.
-- `OBS_WEBSOCKET_PORT` usa a porta padrão esperada.
-- `OBS_WEBSOCKET_PASSWORD` deve ser definida apenas no `.env` local.
+- Em Docker, o host padrão é `host.docker.internal`.
+- Em execução direta no Windows, o padrão é `localhost`.
+- A senha é opcional. Valor vazio não invalida configuração nem impede startup.
+- Quando o `Hello` não possui `authentication`, o cliente envia `Identify` sem autenticação.
+- Quando o `Hello` possui `authentication`, uma senha configurada é transformada segundo o challenge/salt oficial; a senha nunca é enviada ou registrada em claro.
+- Se o servidor exige autenticação e a senha está vazia, o estado é `AuthenticationFailed`, sem crash ou vazamento.
 
-## Proteções
+## Leituras implementadas
 
-- O Compose não monta `OBS_CONFIG_ROOT` no container.
-- Nenhum script deve editar configurações do OBS.
-- Cenas, profiles, plugins, scripts, áudio, fontes e scene collections estão fora do escopo de escrita.
-- A futura conexão deverá falhar explicitamente quando host, porta ou senha forem inválidos.
-- Operações futuras no OBS devem ser mínimas, auditáveis e autorizadas pela task correspondente.
+- `GetVersion` (`obsVersion` e `obsWebSocketVersion`)
+- `GetCurrentProgramScene`
+- `GetStreamStatus`
+- `GetRecordStatus`, incluindo `outputPaused`
 
-## Estado atual
+Não existem comandos para iniciar/parar stream, gravação ou alterar cena nesta task.
 
-Não existe conexão com OBS WebSocket e nenhuma alteração foi realizada no OBS durante `OBS-LIVE-BOT-00`.
+## Estado e reconexão
 
+Estados: `Disconnected`, `Connecting`, `Connected`, `Reconnecting`, `AuthenticationFailed` e `Faulted`.
+
+O backoff é `1s, 2s, 5s, 10s, 30s`, permanecendo limitado a 30 segundos. OBS offline é estado operacional: a API continua viva e o health check retorna `Degraded`. Configuração estrutural inválida ou falha de autenticação retorna `Unhealthy`.
+
+Logs operacionais: `OBS_CONNECTING`, `OBS_CONNECTED`, `OBS_DISCONNECTED`, `OBS_RECONNECTING` e `OBS_AUTH_FAILED`.
+
+## API
+
+- `GET /api/obs/status`: snapshot sanitizado de conexão, versões, cena, stream e gravação.
+- `GET /health`: `Healthy` conectado, `Degraded` offline/reconectando e `Unhealthy` para falha estrutural/autenticação.
+
+## Validação do ambiente em 2026-09-27
+
+- OBS Studio instalado: `32.1.2`.
+- Host Docker: `host.docker.internal`.
+- Porta configurada/escutando: `4455`.
+- O `Hello` real informou OBS WebSocket `5.7.3` e anunciou autenticação.
+- A configuração local possui senha vazia. Por isso as leituras autenticadas reais ficaram bloqueadas; nenhum segredo foi procurado ou extraído.
+- Nenhum arquivo em `OBS_CONFIG_ROOT` foi escrito pelo projeto.

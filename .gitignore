@@ -20,6 +20,7 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+[Oo]bj-api/
 [Ll]og/
 [Ll]ogs/
 
@@ -60,3 +61,6 @@ nunit-*.xml
 *.obsbackup
 backups/*
 !backups/.gitkeep
+
+# n8n runtime journals
+data/n8n/crash.journal

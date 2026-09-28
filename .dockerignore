@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.codex
+.continue
+.env
+**/bin
+**/obj
+**/obj-api
+data
+logs
+backups
+n8n/backup
+TestResults
+*.user
+*.suo

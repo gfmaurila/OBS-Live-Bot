@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="src/dotnet/ObsLiveBot.Domain/ObsLiveBot.Domain.csproj" />
+  <Project Path="src/dotnet/ObsLiveBot.Contracts/ObsLiveBot.Contracts.csproj" />
+  <Project Path="src/dotnet/ObsLiveBot.Application/ObsLiveBot.Application.csproj" />
+  <Project Path="src/dotnet/ObsLiveBot.Infrastructure/ObsLiveBot.Infrastructure.csproj" />
+  <Project Path="src/dotnet/ObsLiveBot.Api/ObsLiveBot.Api.csproj" />
+  <Project Path="tests/ObsLiveBot.UnitTests/ObsLiveBot.UnitTests.csproj" />
+</Solution>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <IntermediateOutputPath>obj-api/$(Configuration)/$(TargetFramework)/</IntermediateOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ObsLiveBot.Application/ObsLiveBot.Application.csproj" />
+    <ProjectReference Include="../ObsLiveBot.Contracts/ObsLiveBot.Contracts.csproj" />
+    <ProjectReference Include="../ObsLiveBot.Infrastructure/ObsLiveBot.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

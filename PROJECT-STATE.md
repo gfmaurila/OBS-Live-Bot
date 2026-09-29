@@ -19,12 +19,17 @@ IN_PROGRESS
 - OBS-LIVE-BOT-06 — IA real local com Ollama: provider Infrastructure substituível, modelo `qwen3:4b-instruct-2507-q4_K_M`, timeout/cancelamento, concorrência e overload bounded, fallback DEV explícito, métricas/health e smoke test real validados.
 - OBS-LIVE-BOT-07 — TTS local real com Piper 1.2.0 e voz `pt_BR-faber-medium`: artefato WAV PCM validado e pipeline Ollama + Piper exercitado sem playback OBS; provider DEV, fallback, timeout/cancelamento, concorrência, overload, armazenamento e cleanup bounded preservados.
 - OBS-LIVE-BOT-08 — narração local via Media Source dedicada do OBS: fila FIFO bounded, playback serial, source isolada em Track 1/MonitorOff, volume/mute independentes, segurança de artifacts, health/API e smoke real Piper → WAV → OBS concluídos; sem live pública ou gravação.
+- OBS-LIVE-BOT-09 / 09.3.1 — captura Twitch real via Social Stream Ninja em modo simples, normalização/MediatR/buffer, isolamento, persistência por bind mount, restart e recriação isolada validados; APIs oficiais permanecem opt-in.
 
 ## Situação
-OBS-LIVE-BOT-00 a OBS-LIVE-BOT-08 concluídas e verificadas. A reprodução automática das interações permanece desativada (`AutoPlayInteractions=false`).
+OBS-LIVE-BOT-00 a OBS-LIVE-BOT-09 concluídas. A Task09.3.1 validou uma mensagem Twitch real pelo adapter SSN, source `classic` ativa, pipeline completo de entrada, persistência após restart e recriação do container e recuperação sem reiniciar a API. A mensagem externa foi ignorada pela automação conforme o gate de segurança; IA/TTS não executaram e `AutoPlayInteractions=false`. Ver [docs/SOCIAL-STREAM-NINJA.md](docs/SOCIAL-STREAM-NINJA.md).
+
+Subtask OBS-LIVE-BOT-09.3.1 — PASS. A regressão de autenticação OBS foi resolvida ao restaurar no OBS a credencial anterior já esperada pelo StudioOS: `/api/obs/status` voltou a `Connected`, `/api/obs/live-state` voltou a `synchronized=true` e as notificações `OBS_AUTH_FAILED` cessaram. Uma mensagem Twitch real chegou via SSE sem usar o endpoint DEV, foi normalizada como `Twitch/Message` e permaneceu no buffer durante restart e recriação do SSN. Suíte completa: 237 testes; build: 0 erros/0 warnings; secret scan: sem achados.
+
+Follow-up de segurança obrigatório após encerrar a validação diagnóstica da Task09.3.1: rotacionar a credencial OBS WebSocket exposta durante o troubleshooting, atualizando em conjunto o OBS e o armazenamento seguro do StudioOS, sem exibir, registrar ou versionar o novo valor.
 
 ## Próxima task executável
-A definir após validação da Task 08. Não iniciar task posterior automaticamente; aguardar solicitação explícita.
+OBS-LIVE-BOT-10 — YouTube Real Chat Integration, somente mediante solicitação explícita. Não iniciada.
 
 ## Decisão arquitetural permanente
 O projeto adota `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST`, `NO PREMATURE INFRASTRUCTURE` e `NO PREMATURE MICROSERVICES`. SQL Server não faz parte da stack obrigatória. EF Core permanece disponível somente quando houver necessidade concreta de persistência e sem provider obrigatório.

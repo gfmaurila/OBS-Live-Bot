@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-08` estão concluídas. Narração local pelo OBS foi validada; autoplay de interações permanece desativado.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-09` estão concluídas. A Task09.3.1 validou captura Twitch real via SSN, persistência após restart/recriação isolada e recuperação sem reiniciar a API. A integração oficial Twitch permanece um modo avançado opcional e não foi autenticada. Narração local pelo OBS foi validada; `AutoPlayInteractions=false`.
 
 ## Serviços locais
 
@@ -23,9 +23,7 @@ URL: `http://localhost:5679`
 
 Email: `dev@gfmstudio.local`
 
-Senha: `GfmStudioOS@Dev2026`
-
-> **ATENÇÃO:** esta é uma credencial conhecida destinada exclusivamente ao ambiente LOCAL de desenvolvimento do GFM StudioOS. Nunca reutilizar esta senha em produção ou em uma instância exposta externamente.
+Use a senha local provisionada no ambiente; credenciais não são documentadas nem versionadas.
 
 ## Endpoints da API
 
@@ -39,6 +37,9 @@ Senha: `GfmStudioOS@Dev2026`
 | Live Chat | GET | `/api/chat/state` | `http://localhost:5080/api/chat/state` |
 | Live Chat | GET | `/api/chat/messages` | `http://localhost:5080/api/chat/messages` |
 | Live Chat | GET | `/api/chat/events` | `http://localhost:5080/api/chat/events` |
+| Twitch Auth | GET | `/api/chat/twitch/auth/status` | `http://localhost:5080/api/chat/twitch/auth/status` |
+| Twitch Auth | POST | `/api/chat/twitch/auth/start` | `http://localhost:5080/api/chat/twitch/auth/start` |
+| Twitch Auth | POST | `/api/chat/twitch/auth/logout` | `http://localhost:5080/api/chat/twitch/auth/logout` |
 | Interactions | GET | `/api/interactions/state` | `http://localhost:5080/api/interactions/state` |
 | Interactions | GET | `/api/interactions/recent` | `http://localhost:5080/api/interactions/recent` |
 | Interactions | GET | `/api/interactions/providers` | `http://localhost:5080/api/interactions/providers` |
@@ -48,6 +49,42 @@ Senha: `GfmStudioOS@Dev2026`
 | Narration (Development) | POST | `/api/narration/dev/test` | `http://localhost:5080/api/narration/dev/test` |
 | Narration | PUT | `/api/narration/mute` | `http://localhost:5080/api/narration/mute` |
 | Narration | PUT | `/api/narration/volume` | `http://localhost:5080/api/narration/volume` |
+
+## Captura simples de chat
+
+O padrão do StudioOS é captura simples pelo container dedicado Social Stream Ninja (SSN). Configure somente o canal ou live que o mecanismo suporta; a API recebe o transporte SSE, normaliza os eventos e os publica pelo MediatR no `LiveChatBuffer`. A configuração reside em `studioos.socialstream.json`, fora do Git e montada read-only em `/app/config`.
+
+Captura simples não usa os Client IDs do arquivo `studioos.providers.json`, OAuth do StudioOS, cookies copiados, credenciais do navegador nem webhooks públicos. Google Cloud/YouTube Data API não é pré-requisito para ler chat do YouTube quando o SSN consegue capturá-lo sem isso. Da mesma forma, consoles de desenvolvedor Twitch/Kick não são pré-requisito para captura simples quando o SSN suporta o canal ou URL informado.
+
+O SSN dedicado usa Docker/headless com Xvfb quando necessário, volume próprio em `data/runtime/socialstream`, sem acesso ao socket Docker, perfil/cookies do navegador, OBS config ou credenciais OBS. Consulte [docs/SOCIAL-STREAM-NINJA.md](docs/SOCIAL-STREAM-NINJA.md) para estado validado e limitações de teste real.
+
+## APIs oficiais (avançado)
+
+Integrações autenticadas continuam opcionais para envio de mensagens, moderação e ações/dados que exijam identidade. O arquivo externo `studioos.providers.json` preserva os IDs e a configuração pública já existentes. `enabled` mantém a disponibilidade geral do provider; `officialApiEnabled` deve ser explicitamente `true` para iniciar uma integração de API oficial. Ausente, esse campo é tratado como `false`. Segredos continuam em armazenamento seguro e não neste JSON.
+
+Quando autorização for necessária, a experiência final deve ser `[ Connect ]` seguida do fluxo oficial. A autenticação Twitch/DPAPI permanece separada da captura simples por SSN. Consulte [docs/TWITCH.md](docs/TWITCH.md).
+
+O destino de produto é `LiveChat → InteractionDecisionPolicy → cooldown/anti-spam/anti-loop → Ollama → (IChatResponseSender para texto + Piper para áudio → OBS Narration)`. `IChatResponseSender` é uma fronteira futura para envio por plataforma; esta task não envia respostas. `AutoPlayInteractions=false`; mensagens de chat não iniciam IA ou TTS.
+
+## Twitch — API oficial avançada
+
+O provider oficial Twitch/EventSub permanece preservado para modo avançado. Ele não é requisito de captura simples e só será iniciado quando `officialApiEnabled: true`; seu OAuth/Device Code Flow e o Secure Credential Helper não foram validados nesta subtask. Veja [docs/TWITCH.md](docs/TWITCH.md).
+
+Os dados públicos de plataformas permanecem em `studioos.providers.json`, fora do repositório e montados read-only em `/app/config`. Twitch, YouTube e Kick seguem disponíveis nesse schema para integrações oficiais futuras; IDs/Client IDs existentes são preservados e não são exigidos pelo SSN simple capture. O API rejeita campos de segredo.
+
+O helper Twitch continua uma dependência apenas do modo autenticado avançado; sua ativação depende de configuração de segurança própria e não faz parte da captura simples.
+
+## Configuração externa de providers
+
+O diretório local de configurações públicas é selecionado por `GFM_STUDIOOS_CONFIG_PATH` no `.env` ignorado. No ambiente atual, ele aponta para `D:\OBS-Live\.config`; `.env.example` contém somente `GFM_STUDIOOS_CONFIG_PATH=`. O Compose monta o diretório host somente para leitura em `/app/config`, onde a API lê `studioos.providers.json` no startup.
+
+Fluxo: `.env` → `GFM_STUDIOOS_CONFIG_PATH` → mount read-only do Compose → `/app/config/studioos.providers.json` → carregador ASP.NET Core → opções/estado dos providers. A configuração é carregada no startup; alterações exigem reiniciar somente o serviço `api`.
+
+O JSON aceita somente configuração pública: `enabled`, `officialApiEnabled`, `clientId`, `channel`, `channelId` e `broadcasterUserId`. `broadcasterUserId` Twitch e `channelId` YouTube podem ficar vazios para resolução futura. `enabled` sozinho não liga API oficial: somente `officialApiEnabled: true` ativa essa integração avançada. Os campos existentes de Twitch, YouTube e Kick são preservados. A captura simples usa as configurações separadas do SSN e não depende desses IDs.
+
+Tokens de acesso/refresh, client secrets, authorization codes, senhas, cookies e credenciais privadas pertencem ao GFM StudioOS Secure Credential Helper/DPAPI, nunca ao JSON. Arquivo ausente ou configuração inválida deixa a API operacional e mantém os providers desabilitados, com motivo operacional sanitizado no log.
+
+Autorização iniciada no StudioOS deverá mostrar o endereço oficial de verificação e o código de usuário; o usuário conclui a autorização no navegador. A sessão deve tratar refresh/revogação, EventSub reconnect/keepalive e desconexão. A mensagem normalizada segue pipeline, dedupe e buffer existentes. Interação automática global e autoplay da narração permanecem desligados; não há envio de mensagens Twitch nesta task. Estado atual e limitações: [docs/TWITCH.md](docs/TWITCH.md).
 
 Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages`, `/api/chat/events`, `/api/interactions/state`, `/api/interactions/recent`, `/api/interactions/providers`, `/api/narration/state` e `/api/narration/recent`.
 

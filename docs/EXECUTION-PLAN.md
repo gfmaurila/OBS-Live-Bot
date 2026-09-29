@@ -13,12 +13,9 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 | OBS-LIVE-BOT-06 | Local AI Engine / Ollama Integration | **PASS — IA real local, fallback DEV, timeout/cancelamento, overload bounded, métricas, health e smoke real** |
 | OBS-LIVE-BOT-07 | Local TTS Engine | **PASS — Piper local, WAV PCM real e integração Ollama + TTS validados; sem playback OBS** |
 | OBS-LIVE-BOT-08 | OBS Narration & Audio Routing | **PASS — source dedicada, fila FIFO bounded, playback OBS real, routing Track 1/MonitorOff, APIs, regressão e finalização Git verificados** |
-| OBS-LIVE-BOT-09 | Human Response Timeout | planejada |
-| OBS-LIVE-BOT-10 | Automatic Response Engine | planejada |
-| OBS-LIVE-BOT-11 | Optional AI Provider | planejada |
-| OBS-LIVE-BOT-12 | YouTube + Twitch + Kick | planejada |
-| OBS-LIVE-BOT-13 | OBS Audio Integration | planejada |
-| OBS-LIVE-BOT-14 | End-to-End Live Tests | planejada |
+| OBS-LIVE-BOT-09 | Twitch Real Chat Integration | **PASS — captura Twitch real via SSN SimpleCapture, pipeline normalizado, isolamento e recuperação validados; official API permanece opt-in e não autenticada** |
+| OBS-LIVE-BOT-09.3.1 | Social Stream Ninja Docker + Simple Chat Connection + LiveChat Integration | **PASS — source Twitch `classic` ativa, mensagem real via SSE, persistência após restart/recriação, API preservada, OBS auth sincronizada, 237 testes, build e secret scan** |
+| OBS-LIVE-BOT-10 | YouTube Real Chat Integration | planejada; não iniciada |
 
 ## Trilhas posteriores já incorporadas à arquitetura
 - **Módulo 04 — Content Engine:** transcrição, análise, cortes, áudio contextual e conteúdo multiplataforma.

@@ -47,6 +47,13 @@ public interface ILiveChatProviderRegistry
     IReadOnlyList<LiveChatProviderSnapshot> GetProviders();
     IReadOnlyList<ILiveChatProvider> GetEnabledProviders();
     ILiveChatProvider? Find(LiveChatProviderType provider);
+    void NotifyCredentialsChanged(LiveChatProviderType provider);
+}
+
+public interface ILiveChatProviderReconnectSignal
+{
+    void SignalReconnect();
+    Task WaitForReconnectSignalAsync(CancellationToken cancellationToken);
 }
 
 public interface ILiveChatBuffer

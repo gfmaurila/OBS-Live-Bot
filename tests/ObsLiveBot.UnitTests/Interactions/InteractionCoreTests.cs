@@ -213,6 +213,30 @@ public sealed class InteractionCoreTests
     }
 
     [Fact]
+    public async Task SocialStreamCapture_NeverTriggersAutomaticAiOrTts()
+    {
+        var harness = Harness();
+        var chatEvent = Event(message: "!studioos responda") with
+        {
+            Metadata = new Dictionary<string, string?>
+            {
+                ["source.adapter"] = "SocialStreamNinja",
+                ["interaction.suppressed"] = "true"
+            }
+        };
+
+        var result = await harness.Orchestrator.ProcessAsync(
+            chatEvent,
+            InteractionResponseMode.TextAndVoice,
+            default);
+
+        Assert.Equal(InteractionStatus.Ignored, result.Status);
+        Assert.Equal("ExternalCaptureAutoResponseDisabled", result.Decision.Reason);
+        Assert.Equal(0, harness.Ai.Calls);
+        Assert.Equal(0, harness.Tts.Calls);
+    }
+
+    [Fact]
     public void Cooldown_BlocksRepeatedProviderChannelUser()
     {
         var options = Options.Create(new InteractionOptions { CooldownSeconds = 30, CooldownCapacity = 10 });

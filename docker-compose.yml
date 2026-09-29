@@ -17,16 +17,9 @@ services:
       OBS_WEBSOCKET_PASSWORD: ${OBS_WEBSOCKET_PASSWORD:-}
       LiveChat__BufferCapacity: ${LIVE_CHAT_BUFFER_CAPACITY:-500}
       LiveChat__DeduplicationCapacity: ${LIVE_CHAT_DEDUPLICATION_CAPACITY:-2000}
-      TWITCH_ENABLED: ${TWITCH_ENABLED:-false}
-      TWITCH_CHANNEL: ${TWITCH_CHANNEL:-}
-      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-}
-      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-}
-      TWITCH_ACCESS_TOKEN: ${TWITCH_ACCESS_TOKEN:-}
-      YOUTUBE_ENABLED: ${YOUTUBE_ENABLED:-false}
-      YOUTUBE_CHANNEL: ${YOUTUBE_CHANNEL:-}
-      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID:-}
-      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET:-}
-      YOUTUBE_REFRESH_TOKEN: ${YOUTUBE_REFRESH_TOKEN:-}
+      GFM_STUDIOOS_CONFIG_PATH: /app/config
+      CredentialHelper__BaseUrl: http://host.docker.internal:51823/
+      CredentialHelper__SharedKey: ${GFM_STUDIOOS_CREDENTIAL_HELPER_SHARED_KEY:-}
       TIKTOK_ENABLED: ${TIKTOK_ENABLED:-false}
       TIKTOK_CHANNEL: ${TIKTOK_CHANNEL:-}
       Interactions__Ollama__BaseUrl: http://host.docker.internal:11434
@@ -34,10 +27,43 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
+      - ${GFM_STUDIOOS_CONFIG_PATH:?Set GFM_STUDIOOS_CONFIG_PATH in the local .env file}:/app/config:ro
       - ./data/runtime/tts-engine:/opt/tts-engine:ro
       - ./data/runtime/tts:/app/data/runtime/tts
     networks:
       - obs-live-bot
+      - socialstream-internal
+
+  socialstream:
+    build:
+      context: .
+      dockerfile: infra/socialstream/Dockerfile
+      args:
+        SSN_VERSION: "0.4.18"
+        SSN_SHA256: "1ed1406de5a75faae6bb3fc4572ac76bde44f78585c01f77c2eb888d98ff8c14"
+    image: gfm-studioos/socialstream-ninja:0.4.18
+    container_name: gfm-studioos-socialstream
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DISPLAY: :99
+      HOME: /var/lib/socialstream
+      XDG_CACHE_HOME: /tmp/cache
+      SSAPP_USER_DATA_DIR: /var/lib/socialstream
+      SSAPP_CONTROL_API: "1"
+      SSAPP_CONTROL_PORT: "17777"
+    volumes:
+      - ./data/runtime/socialstream:/var/lib/socialstream
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m,mode=1777,uid=10001,gid=10001
+      - /tmp/.X11-unix:rw,nosuid,size=16m,mode=1777
+    networks:
+      - socialstream-internal
+      - socialstream-egress
 
   n8n:
     image: ${N8N_IMAGE:-n8nio/n8n:latest}
@@ -84,3 +110,8 @@ services:
 networks:
   obs-live-bot:
     name: obs-live-bot
+  socialstream-internal:
+    name: gfm-studioos-socialstream
+    internal: true
+  socialstream-egress:
+    name: gfm-studioos-socialstream-egress

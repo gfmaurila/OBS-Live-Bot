@@ -60,7 +60,7 @@ public sealed class GetLiveChatMessagesQueryValidator : AbstractValidator<GetLiv
         RuleFor(query => query.Limit).InclusiveBetween(1, 100);
         RuleFor(query => query.Provider).Must(ChatQueryValidation.IsKnownProvider)
             .When(query => !string.IsNullOrWhiteSpace(query.Provider))
-            .WithMessage("Provider must be Twitch, YouTube, or TikTok.");
+            .WithMessage("Provider must be Twitch, YouTube, Kick, TikTok, or SocialStreamNinja.");
     }
 }
 
@@ -71,7 +71,7 @@ public sealed class GetLiveChatEventsQueryValidator : AbstractValidator<GetLiveC
         RuleFor(query => query.Limit).InclusiveBetween(1, 100);
         RuleFor(query => query.Provider).Must(ChatQueryValidation.IsKnownProvider)
             .When(query => !string.IsNullOrWhiteSpace(query.Provider))
-            .WithMessage("Provider must be Twitch, YouTube, or TikTok.");
+            .WithMessage("Provider must be Twitch, YouTube, Kick, TikTok, or SocialStreamNinja.");
     }
 }
 
@@ -113,7 +113,8 @@ internal static class ChatQueryValidation
 {
     public static bool IsKnownProvider(string? value) =>
         Enum.TryParse<LiveChatProviderType>(value, true, out var provider) &&
-        provider is LiveChatProviderType.Twitch or LiveChatProviderType.YouTube or LiveChatProviderType.TikTok;
+        provider is LiveChatProviderType.Twitch or LiveChatProviderType.YouTube or LiveChatProviderType.Kick or
+            LiveChatProviderType.TikTok or LiveChatProviderType.SocialStreamNinja;
 
     public static LiveChatProviderType? ParseProvider(string? value) =>
         string.IsNullOrWhiteSpace(value)
@@ -125,13 +126,18 @@ internal static class ChatResponseMapper
 {
     public static LiveChatProviderResponse Map(LiveChatProviderSnapshot provider) => new(
         provider.Provider.ToString(),
+        provider.Provider == LiveChatProviderType.SocialStreamNinja ? "SimpleCapture" : "OfficialApi",
         provider.Enabled,
         provider.State.ToString(),
         provider.IsConnected,
         provider.Channel,
         provider.LastConnectedAtUtc,
         provider.LastEventAtUtc,
-        provider.Error);
+        provider.Error,
+        provider.ProcessRunning,
+        provider.TransportReady,
+        provider.CaptureReady,
+        provider.PlatformsObserved ?? []);
 
     public static LiveChatEventResponse Map(LiveChatEvent chatEvent) => new(
         chatEvent.EventId,

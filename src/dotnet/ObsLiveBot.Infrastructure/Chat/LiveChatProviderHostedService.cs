@@ -31,9 +31,17 @@ public sealed class LiveChatProviderHostedService(
                     await provider.ConnectAsync(cancellationToken).ConfigureAwait(false);
                     var state = provider.Snapshot.State;
                     if (state is LiveChatProviderState.Disabled or LiveChatProviderState.NotConfigured or
-                        LiveChatProviderState.AuthenticationRequired or LiveChatProviderState.AuthenticationFailed)
+                        LiveChatProviderState.AuthenticationFailed)
                     {
                         return;
+                    }
+
+                    if (state == LiveChatProviderState.AuthenticationRequired &&
+                        provider is ILiveChatProviderReconnectSignal reconnectSignal)
+                    {
+                        await reconnectSignal.WaitForReconnectSignalAsync(cancellationToken).ConfigureAwait(false);
+                        attempt = 0;
+                        continue;
                     }
 
                     if (state == LiveChatProviderState.RateLimited && provider.RetryAfter is { } retryAfter)

@@ -30,13 +30,18 @@ public sealed record LiveChatEventResponse(
 
 public sealed record LiveChatProviderResponse(
     string Provider,
+    string ConnectionMode,
     bool Enabled,
     string State,
     bool Connected,
     string? Channel,
     DateTimeOffset? LastConnectedAtUtc,
     DateTimeOffset? LastEventAtUtc,
-    string? Error);
+    string? Error,
+    bool ProcessRunning,
+    bool TransportReady,
+    bool CaptureReady,
+    IReadOnlyList<string> PlatformsObserved);
 
 public sealed record LiveChatProvidersResponse(IReadOnlyList<LiveChatProviderResponse> Providers);
 

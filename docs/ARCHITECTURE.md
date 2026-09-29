@@ -58,6 +58,39 @@ Endpoint -> Request -> Mapping -> Command/Query -> Mediator
 
 Commands alteram estado. Queries somente leem. Domain Events representam fatos relevantes já ocorridos e permitem efeitos desacoplados. Endpoints não contêm regra de negócio. Entidades de domínio não são contratos externos.
 
+## Social chat capture — simple mode (OBS-LIVE-BOT-09.3)
+
+```text
+Twitch / YouTube / Kick
+  -> dedicated Social Stream Ninja Docker/headless engine
+  -> SSE -> SocialStreamNinjaProvider (Infrastructure)
+  -> normalization / validation / dedupe -> MediatR -> LiveChatBuffer -> read-only APIs
+```
+
+SSN is an Infrastructure adapter, not a domain dependency. Domain/Application continue to depend on `ILiveChatProvider`; a future engine can replace it without changing chat, Interaction, Ollama, Piper or narration. `studioos.socialstream.json` contains the minimum public capture settings and is read from the external read-only mount. SSN simple capture does not require StudioOS OAuth, Google Cloud, official EventSub, a public Kick webhook, cookies, stream keys or secrets when the selected SSN version can read the source without them.
+
+Official platform APIs are an optional advanced mode. The existing public `studioos.providers.json` entries remain available; `officialApiEnabled` must be explicitly true before an official adapter starts. Missing/false means simple mode remains independent of developer app setup. Sending future text uses an `IChatResponseSender` boundary with per-platform implementations; it is not implemented here.
+
+Future product flow: `LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop -> Ollama -> (IChatResponseSender + Piper -> OBS Narration)`. Preserve identity as `Provider + ProviderUserId`; mark bot messages and exclude them from future prompts. Task09.3 only validates input and keeps `AutoPlayInteractions=false`.
+
+The future Command Center presents each provider, public channel/live URL, `[ Connect ]`, state, last-connect/message times and a sanitized error. Official APIs appear under Advanced as a separate opt-in.
+
+## Optional official Twitch API integration (OBS-LIVE-BOT-09)
+
+```text
+`.env:GFM_STUDIOOS_CONFIG_PATH` -> read-only host mount `/app/config`
+  -> `studioos.providers.json` (public Twitch / YouTube / Kick settings)
+  -> Twitch EventSub WebSocket -> Twitch Infrastructure Provider
+  -> normalização/validação/dedupe -> MediatR -> LiveChatBuffer
+  -> interação somente via gate explícito (desabilitado por padrão)
+  -> Ollama -> Piper -> Narration -> OBS
+
+Windows host: GFM StudioOS Secure Credential Helper -> DPAPI CurrentUser
+Docker Linux API: token em memória durante chamadas, sem persistência plaintext
+```
+
+O API permanece no Docker. A pasta de configuração pública do host é montada somente para leitura; o caminho host vem de `GFM_STUDIOOS_CONFIG_PATH` e o código usa `/app/config`, sem caminho Windows hardcoded. O JSON é carregado no startup (sem hot reload); se estiver ausente ou inválido, a API continua operacional, registra somente um motivo sanitizado e mantém integrações de providers desabilitadas. Segredos não são aceitos no JSON. Como Windows DPAPI e named pipes do host não estão disponíveis diretamente ao container Linux nesta topologia, o helper genérico usa uma interface HTTP no gateway Docker, com autenticação IPC e allowlist de rede; peer address e firewall precisam de validação antes de habilitar o helper. Tokens persistidos são protegidos pelo helper no perfil Windows; indisponibilidade do helper degrada somente autenticação Twitch. Consulte [docs/TWITCH.md](TWITCH.md).
+
 ## Ownership
 ### C#/.NET
 Fonte de verdade do domínio, API, Command Center Windows, OBS WebSocket, regras de live, settings, persistência, backup/restore, contratos e coordenação.

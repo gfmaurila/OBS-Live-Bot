@@ -22,6 +22,7 @@
     <ProjectReference Include="../../src/dotnet/ObsLiveBot.Application/ObsLiveBot.Application.csproj" />
     <ProjectReference Include="../../src/dotnet/ObsLiveBot.Infrastructure/ObsLiveBot.Infrastructure.csproj" />
     <ProjectReference Include="../../src/dotnet/ObsLiveBot.Api/ObsLiveBot.Api.csproj" />
+    <ProjectReference Include="../../src/dotnet/GfmStudioOS.SecureCredentialHelper/GfmStudioOS.SecureCredentialHelper.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

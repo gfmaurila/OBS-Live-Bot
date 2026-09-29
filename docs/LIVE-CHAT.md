@@ -41,8 +41,9 @@ Chaves de metadata relacionadas a password, token, secret, credential ou OAuth s
 
 | Provider | Adapter | Configuração atual | Ingestão real |
 |---|---|---|---|
-| Twitch | Foundation | Disabled; NotConfigured se habilitado sem credenciais | NOT EXECUTED |
-| YouTube | Foundation | Disabled; NotConfigured se habilitado sem credenciais | NOT EXECUTED |
+| Twitch | SocialStreamNinja simple capture; official API opt-in | Captura simples independe de OAuth; API oficial exige `officialApiEnabled: true` | REAL CHAT NOT YET VALIDATED |
+| YouTube | SocialStreamNinja simple capture; official API opt-in | Captura simples independe de Google Cloud quando SSN suporta; API oficial é opt-in | REAL CHAT NOT YET VALIDATED |
+| Kick | SocialStreamNinja simple capture; official API opt-in | Captura simples não usa webhook oficial; API oficial é opt-in | REAL CHAT NOT YET VALIDATED |
 | TikTok | Foundation, sem scraping/browser automation | Disabled; NotConfigured se habilitado sem integração confiável | NOT EXECUTED |
 
 Os adapters implementam contrato, estado e lifecycle comuns. Credenciais ausentes não impedem startup e resultam em `NotConfigured`; providers desabilitados resultam em `Disabled`. Adapters específicos permanecem em Infrastructure, sem SDKs vazando para Application ou Domain.
@@ -60,7 +61,7 @@ Configurações não sensíveis ficam em `LiveChat` no appsettings. Valores sens
 - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_ACCESS_TOKEN`;
 - `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`.
 
-Nenhum valor fictício é versionado. Social Stream Ninja não é dependência.
+Nenhum valor fictício é versionado. Social Stream Ninja é um adapter de Infrastructure para captura simples e permanece substituível por outro `ILiveChatProvider`.
 
 ## API
 
@@ -74,3 +75,13 @@ Nenhum valor fictício é versionado. Social Stream Ninja não é dependência.
 ## Fora do escopo
 
 Não há envio de mensagens, IA, TTS, STT, comandos de viewers, comandos OBS via chat, moderação automática, analytics persistentes ou persistência do histórico.
+
+## Social Stream Ninja — simple capture (Task09.3)
+
+SSN runs in its own Docker/headless service. Its SSE events enter through `SocialStreamNinjaLiveChatProvider` in Infrastructure, normalize to the existing provider-neutral event, then pass through MediatR and `LiveChatBuffer`. Unicode, dedupe, provider-scoped identity and unknown-event preservation remain the shared pipeline behavior.
+
+`studioos.socialstream.json` contains the minimum capture configuration only: schema, enabled state, endpoint, channel identifiers and provider enables. It must not contain OAuth values, Client Secrets, access/refresh tokens, stream keys, browser cookies or session data. SSN capture uses public channel/live inputs supported by the selected engine. Google Cloud/Data API is not a simple YouTube capture prerequisite when SSN can capture that live; Twitch/Kick developer apps and a public Kick webhook are likewise not prerequisites when SSN can capture those sources.
+
+`studioos.providers.json` remains intact for official authenticated actions. `officialApiEnabled` explicitly gates official integrations; omitted/false means their `enabled` and public IDs do not activate those adapters. Send-message support is a future `IChatResponseSender` boundary. Automatic AI, platform text response and chat-triggered TTS/narration are all disabled in Task09.3.
+
+Task09.3.1 validated a real Twitch message through SSN SSE, normalization, MediatR and the bounded buffer. Restart and isolated recreation of only the SSN container preserved the configured Twitch `classic` source and left the API process and buffered events intact. External-capture interactions remained ignored, with no AI, TTS or narration execution.

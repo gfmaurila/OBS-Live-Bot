@@ -18,6 +18,9 @@ using Serilog.Formatting.Json;
 DotEnv.LoadIfPresent(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
 
 var builder = WebApplication.CreateBuilder(args);
+var providerConfigDirectory = Environment.GetEnvironmentVariable("GFM_STUDIOOS_CONFIG_PATH");
+var providerConfigLoad = StudioOsProviderConfigurationLoader.Load(builder.Configuration, providerConfigDirectory);
+var socialStreamConfigLoad = SocialStreamNinjaConfigurationLoader.Load(builder.Configuration, providerConfigDirectory);
 builder.Host.UseSerilog((_, _, loggerConfiguration) => loggerConfiguration
     .MinimumLevel.Information()
     .Enrich.FromLogContext()
@@ -59,6 +62,28 @@ builder.Services.AddNarrationInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
+if (providerConfigLoad.Loaded)
+{
+    app.Logger.LogInformation("STUDIOOS_PROVIDER_CONFIG_LOADED schemaVersion={SchemaVersion}", 1);
+}
+else
+{
+    app.Logger.LogWarning(
+        "STUDIOOS_PROVIDER_CONFIG_UNAVAILABLE reason={Reason}; provider integrations remain disabled",
+        providerConfigLoad.Status);
+}
+
+if (socialStreamConfigLoad.Loaded)
+{
+    app.Logger.LogInformation("STUDIOOS_SOCIALSTREAM_CONFIG_LOADED schemaVersion={SchemaVersion}", 1);
+}
+else
+{
+    app.Logger.LogWarning(
+        "STUDIOOS_SOCIALSTREAM_CONFIG_UNAVAILABLE reason={Reason}; Social Stream Ninja remains disabled",
+        socialStreamConfigLoad.Status);
+}
+
 app.UseExceptionHandler();
 app.UseSwagger();
 app.UseSwaggerUI();
@@ -96,7 +121,7 @@ app.MapGet(
 
 app.MapObsStatusEndpoint();
 app.MapObsLiveStateEndpoints();
-app.MapLiveChatEndpoints();
+app.MapLiveChatEndpoints(app.Environment.IsDevelopment());
 app.MapInteractionEndpoints(app.Environment.IsDevelopment());
 app.MapNarrationEndpoints(app.Environment.IsDevelopment());
 app.Run();

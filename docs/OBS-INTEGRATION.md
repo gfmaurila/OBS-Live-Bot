@@ -79,3 +79,14 @@ Endpoints:
 - `GET /api/obs/events?limit=20` (`limit` entre 1 e 100)
 
 O teste real detectou a transição controlada `Iniciando -> Finalizando -> Iniciando`, restaurou a cena original e confirmou full resync após reinício do OBS com stream e recording inativos.
+
+## Diagnóstico de autenticação da Task09.3.1 — 2026-09-29
+
+- Servidor OBS WebSocket habilitado na porta `4455`, com autenticação obrigatória.
+- Credencial do StudioOS carregada e correspondente à credencial restaurada no OBS, sem exibição do valor.
+- `GET /api/obs/status`: `Connected`.
+- `GET /api/obs/live-state`: `synchronized=true` e `stale=false`.
+- Após `OBS_CONNECTED`, as notificações repetidas `OBS_AUTH_FAILED` cessaram.
+- Causa raiz comprovada: a credencial OBS WebSocket havia mudado enquanto o StudioOS ainda mantinha/esperava a credencial anterior.
+- Nenhuma rotação foi executada durante o diagnóstico e a credencial do StudioOS não foi alterada.
+- Follow-up obrigatório após a Task09.3.1: rotacionar a credencial exposta e atualizar OBS e armazenamento seguro do StudioOS em conjunto, sem imprimir, registrar, documentar ou versionar o novo valor.

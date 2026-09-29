@@ -20,4 +20,10 @@ public sealed class LiveChatProviderRegistry : ILiveChatProviderRegistry
 
     public ILiveChatProvider? Find(LiveChatProviderType provider) =>
         _providers.GetValueOrDefault(provider);
+
+    public void NotifyCredentialsChanged(LiveChatProviderType provider)
+    {
+        if (Find(provider) is ILiveChatProviderReconnectSignal signal)
+            signal.SignalReconnect();
+    }
 }

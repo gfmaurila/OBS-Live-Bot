@@ -48,3 +48,16 @@ Credenciais protegidas por Windows/DPAPI/OAuth/provedor podem exigir reautentica
 - Respostas de `/health` e `/api/obs/status` não possuem campos de credencial.
 - Rotações geram senha com CSPRNG (mínimo de 32 bytes), gravam o valor somente no `.env` local e no arquivo WebSocket do OBS, e nunca exibem o valor.
 - O backup pré-rotação do arquivo WebSocket é protegido com Windows DPAPI (`CurrentUser`) e permanece excluído do Git.
+# Twitch host credential boundary (OBS-LIVE-BOT-09)
+
+The API remains inside Linux Docker. Twitch tokens must not be stored in the container, `.env`, Compose configuration, images, logs, n8n, or Git. The generic Windows **GFM StudioOS Secure Credential Helper** persists credentials under the current Windows user's profile using DPAPI `CurrentUser`; token values are returned only to the authorized local API process when needed in memory.
+
+Docker Desktop's Linux container cannot consume a Windows named pipe in this topology. The helper therefore exposes a minimal HTTP interface on its host-side virtual network with a shared IPC bearer key (not a Twitch token), network allowlisting, bounded payloads, strict provider/key validation, fixed-time key comparison, no enumeration endpoint, and no Swagger. Its listener must be restricted by Windows Firewall to the Docker Desktop virtual network. The actual peer address and firewall scope remain runtime validation requirements; if they cannot be narrowed to Docker, do not enable the helper. There is no intended LAN/Internet access.
+
+DPAPI CurrentUser binds stored payloads to the Windows user profile. Logout and authorization revocation delete the generic `Twitch/OAuthTokens` entry. Diagnostics expose helper/provider state only, never credential values. The API may temporarily hold credentials in process memory for Twitch HTTPS/EventSub communication; errors/logs must not contain tokens or authorization codes.
+
+Provider configuration is external and non-secret: the ignored `.env` contains only `GFM_STUDIOOS_CONFIG_PATH` (plus locally protected runtime settings), and `studioos.providers.json` holds public `enabled`, `clientId`, `channel`, `channelId`, and `broadcasterUserId` fields. The host folder is mounted read-only at `/app/config`. Access/refresh tokens, authorization codes, passwords, cookies, client secrets, and private credentials must never enter that JSON; Twitch tokens belong in the Windows Secure Credential Helper protected by DPAPI CurrentUser. Do not introduce a Twitch client secret for the approved public Device Code Flow.
+
+## Mandatory OBS credential follow-up after Task09.3.1
+
+The OBS WebSocket credential used during Task09.3.1 troubleshooting was exposed. Diagnostic validation must finish without rotating it so the authentication regression can be attributed correctly. Immediately after that task is complete, rotate the credential as a separate controlled security action and update OBS plus StudioOS secure credential storage atomically. Never print or log the new value, commit it, add it to documentation, or copy it into any provider JSON file.

@@ -44,6 +44,9 @@ public sealed class InteractionDecisionPolicy(
     {
         if (!_options.Enabled)
             return (InteractionDecisionType.Ignore, "InteractionsDisabled", InteractionResponseMode.None);
+        if (chatEvent.Metadata.TryGetValue("interaction.suppressed", out var suppressed) &&
+            string.Equals(suppressed, "true", StringComparison.OrdinalIgnoreCase))
+            return (InteractionDecisionType.Ignore, "ExternalCaptureAutoResponseDisabled", InteractionResponseMode.None);
         if (chatEvent.EventType != LiveChatEventType.Message)
             return (InteractionDecisionType.Ignore, "UnsupportedEventType", InteractionResponseMode.None);
         if (chatEvent.Provider == LiveChatProviderType.Unknown)

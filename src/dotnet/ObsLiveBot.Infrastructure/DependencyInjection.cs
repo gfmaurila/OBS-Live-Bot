@@ -50,12 +50,18 @@ public static class DependencyInjection
 
         services
             .AddOptions<LiveChatProvidersOptions>()
-            .Bind(configuration.GetSection(LiveChatProvidersOptions.SectionName))
             .Configure(options =>
             {
-                ApplyEnvironment(options.Twitch, "TWITCH");
-                ApplyEnvironment(options.YouTube, "YOUTUBE");
-                ApplyEnvironment(options.TikTok, "TIKTOK");
+                var providers = configuration.GetSection("providers").Get<StudioOsProviderConfiguration>();
+                if (providers is null)
+                    return;
+
+                options.Twitch = MapProvider(providers.Twitch, requiresChannel: true, channel: providers.Twitch.Channel);
+                options.YouTube = MapProvider(
+                    providers.YouTube,
+                    requiresChannel: false,
+                    channel: providers.YouTube.ChannelId ?? providers.YouTube.Channel);
+                options.Kick = MapProvider(providers.Kick, requiresChannel: true, channel: providers.Kick.Channel);
             });
 
         services.TryAddSingleton(TimeProvider.System);
@@ -66,12 +72,61 @@ public static class DependencyInjection
         services.AddSingleton<ILiveChatEventPublisher, NoOpLiveChatEventPublisher>();
         services.AddSingleton<ILiveChatReconnectDelay, ProgressiveLiveChatReconnectDelay>();
 
+        services.AddOptions<CredentialHelperClientOptions>()
+            .Bind(configuration.GetSection(CredentialHelperClientOptions.SectionName));
+        services.AddSingleton<IValidateOptions<CredentialHelperClientOptions>, CredentialHelperClientOptionsValidator>();
+        services.AddHttpClient("CredentialHelper", (provider, client) =>
+        {
+            var helper = provider.GetRequiredService<IOptions<CredentialHelperClientOptions>>().Value;
+            client.BaseAddress = new Uri(helper.BaseUrl, UriKind.Absolute);
+            client.Timeout = TimeSpan.FromSeconds(helper.TimeoutSeconds);
+        });
+        services.AddSingleton<ITwitchTokenStore, SecureHelperTwitchTokenStore>();
+        services.AddOptions<TwitchOAuthOptions>()
+            .Configure(options =>
+            {
+                var twitch = configuration.GetSection("providers:twitch");
+                options.ClientId = twitch["clientId"];
+                options.Channel = twitch["channel"];
+                options.Enabled = twitch.GetValue<bool>("officialApiEnabled") &&
+                                  twitch.GetValue<bool>("enabled") &&
+                                  !string.IsNullOrWhiteSpace(options.ClientId) &&
+                                  !string.IsNullOrWhiteSpace(options.Channel);
+            });
+        services.AddSingleton<IValidateOptions<TwitchOAuthOptions>, TwitchOAuthOptionsValidator>();
+        services.AddHttpClient("TwitchOAuth", client =>
+        {
+            client.BaseAddress = new Uri("https://id.twitch.tv/");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
+        services.AddHttpClient("TwitchApi", client =>
+        {
+            client.BaseAddress = new Uri("https://api.twitch.tv/");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
+        services.AddSingleton<ITwitchAuthorizationService, TwitchDeviceAuthorizationService>();
+
+        services.AddOptions<SocialStreamNinjaOptions>()
+            .Bind(configuration.GetSection(SocialStreamNinjaOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SocialStreamNinjaOptions>, SocialStreamNinjaOptionsValidator>();
+        services.AddHttpClient("SocialStreamNinja", (provider, client) =>
+        {
+            var options = provider.GetRequiredService<IOptions<SocialStreamNinjaOptions>>().Value;
+            client.BaseAddress = new Uri(options.Endpoint.TrimEnd('/') + "/", UriKind.Absolute);
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        });
+        services.AddSingleton<SocialStreamNinjaMessageMapper>();
+        services.AddSingleton<SocialStreamNinjaLiveChatProvider>();
+
         services.AddSingleton<TwitchLiveChatProvider>();
+        services.AddSingleton<TwitchEventSubLiveChatProvider>();
         services.AddSingleton<YouTubeLiveChatProvider>();
         services.AddSingleton<TikTokLiveChatProvider>();
-        services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<TwitchLiveChatProvider>());
+        services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<TwitchEventSubLiveChatProvider>());
         services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<YouTubeLiveChatProvider>());
         services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<TikTokLiveChatProvider>());
+        services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<SocialStreamNinjaLiveChatProvider>());
         services.AddSingleton<ILiveChatProviderRegistry, LiveChatProviderRegistry>();
         services.AddHostedService<LiveChatProviderHostedService>();
         services.AddHealthChecks().AddCheck<LiveChatHealthCheck>("chat");
@@ -138,23 +193,16 @@ public static class DependencyInjection
         return services;
     }
 
-    private static void ApplyEnvironment(LiveChatProviderConfiguration options, string prefix)
+    private static LiveChatProviderConfiguration MapProvider(
+        StudioOsPublicProviderSettings settings,
+        bool requiresChannel,
+        string? channel) => new()
     {
-        if (bool.TryParse(Environment.GetEnvironmentVariable($"{prefix}_ENABLED"), out var enabled))
-        {
-            options.Enabled = enabled;
-        }
-
-        options.Channel = ReadEnvironment($"{prefix}_CHANNEL", options.Channel);
-        options.ClientId = ReadEnvironment($"{prefix}_CLIENT_ID", options.ClientId);
-        options.ClientSecret = ReadEnvironment($"{prefix}_CLIENT_SECRET", options.ClientSecret);
-        options.AccessToken = ReadEnvironment($"{prefix}_ACCESS_TOKEN", options.AccessToken);
-        options.RefreshToken = ReadEnvironment($"{prefix}_REFRESH_TOKEN", options.RefreshToken);
-    }
-
-    private static string? ReadEnvironment(string name, string? currentValue)
-    {
-        var value = Environment.GetEnvironmentVariable(name);
-        return string.IsNullOrEmpty(value) ? currentValue : value;
-    }
+        Enabled = settings.OfficialApiEnabled &&
+                  settings.Enabled &&
+                  !string.IsNullOrWhiteSpace(settings.ClientId) &&
+                  (!requiresChannel || !string.IsNullOrWhiteSpace(channel)),
+        ClientId = settings.ClientId,
+        Channel = channel
+    };
 }

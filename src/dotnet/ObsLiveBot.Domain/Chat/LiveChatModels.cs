@@ -6,6 +6,8 @@ public enum LiveChatProviderType
     Twitch = 1,
     YouTube = 2,
     TikTok = 3,
+    Kick = 4,
+    SocialStreamNinja = 50,
     Development = 100
 }
 
@@ -74,7 +76,11 @@ public sealed record LiveChatProviderSnapshot(
     string? Channel,
     DateTimeOffset? LastConnectedAtUtc,
     DateTimeOffset? LastEventAtUtc,
-    string? Error)
+    string? Error,
+    bool ProcessRunning = false,
+    bool TransportReady = false,
+    bool CaptureReady = false,
+    IReadOnlyList<string>? PlatformsObserved = null)
 {
     public bool IsConnected => State == LiveChatProviderState.Connected;
 }

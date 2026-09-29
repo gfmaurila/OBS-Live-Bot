@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-07` estão concluídas. A Task 08 está em validação: playback local controlado pelo OBS foi implementado; Autoplay de interações permanece desativado.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-08` estão concluídas. Narração local pelo OBS foi validada; autoplay de interações permanece desativado.
 
 ## Serviços locais
 
@@ -59,7 +59,7 @@ O subsistema de interações processa eventos normalizados pelo mesmo pipeline d
 - `DevelopmentTextToSpeechProvider` continua disponível para testes e fallback; ele retorna metadados simulados e não gera áudio real.
 - `OllamaAiInteractionProvider` usa IA real local; `DevelopmentAiInteractionProvider` permanece disponível para testes e fallback explícito.
 - `PiperTextToSpeechProvider` gera WAV PCM real localmente com a voz `pt_BR-faber-medium` (português brasileiro, 22.050 Hz, mono, PCM 16-bit).
-- **REAL LOCAL AI: YES. REAL LOCAL TTS: YES.** O playback de narração controlado no OBS está sendo validado na Task 08; não há autoplay de conversas por padrão.
+- **REAL LOCAL AI: YES. REAL LOCAL TTS: YES. REAL OBS NARRATION: YES.** Não há autoplay de conversas por padrão.
 - Nenhuma API paga, banco, broker, cache distribuído ou novo container é necessário.
 - O endpoint `/api/interactions/dev/test` só é registrado quando `ASPNETCORE_ENVIRONMENT=Development`.
 

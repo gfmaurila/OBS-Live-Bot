@@ -18,12 +18,13 @@ IN_PROGRESS
 - OBS-LIVE-BOT-05 — foundation local de AI Interaction e TTS: decisão determinística, prevenção de loop, cooldown e buffers bounded, providers DEV, isolamento de falhas, MediatR, health e APIs validados.
 - OBS-LIVE-BOT-06 — IA real local com Ollama: provider Infrastructure substituível, modelo `qwen3:4b-instruct-2507-q4_K_M`, timeout/cancelamento, concorrência e overload bounded, fallback DEV explícito, métricas/health e smoke test real validados.
 - OBS-LIVE-BOT-07 — TTS local real com Piper 1.2.0 e voz `pt_BR-faber-medium`: artefato WAV PCM validado e pipeline Ollama + Piper exercitado sem playback OBS; provider DEV, fallback, timeout/cancelamento, concorrência, overload, armazenamento e cleanup bounded preservados.
+- OBS-LIVE-BOT-08 — narração local via Media Source dedicada do OBS: fila FIFO bounded, playback serial, source isolada em Track 1/MonitorOff, volume/mute independentes, segurança de artifacts, health/API e smoke real Piper → WAV → OBS concluídos; sem live pública ou gravação.
 
-## Em execução
-- OBS-LIVE-BOT-08 — playback real de narração via OBS Media Source dedicado; smoke Piper → WAV → OBS confirmou `Playing` e `Completed`, routing restrito à Track 1, `MonitorOff`, mute/volume independentes e `AutoPlayInteractions=false`. Testes finais, regressão, documentação e Git ainda pendentes; não registrar PASS antes de concluir tudo.
+## Situação
+OBS-LIVE-BOT-00 a OBS-LIVE-BOT-08 concluídas e verificadas. A reprodução automática das interações permanece desativada (`AutoPlayInteractions=false`).
 
 ## Próxima task executável
-OBS-LIVE-BOT-08 — OBS Narration & Audio Routing está em execução. Não iniciar task posterior automaticamente; aguardar solicitação explícita após validação/finalização.
+A definir após validação da Task 08. Não iniciar task posterior automaticamente; aguardar solicitação explícita.
 
 ## Decisão arquitetural permanente
 O projeto adota `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST`, `NO PREMATURE INFRASTRUCTURE` e `NO PREMATURE MICROSERVICES`. SQL Server não faz parte da stack obrigatória. EF Core permanece disponível somente quando houver necessidade concreta de persistência e sem provider obrigatório.

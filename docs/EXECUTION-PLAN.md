@@ -12,7 +12,7 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 | OBS-LIVE-BOT-05 | AI Interaction & TTS Foundation | **PASS — decisão/cooldown/contexto, providers DEV, sanitização, TTS simulado, buffer, health e APIs** |
 | OBS-LIVE-BOT-06 | Local AI Engine / Ollama Integration | **PASS — IA real local, fallback DEV, timeout/cancelamento, overload bounded, métricas, health e smoke real** |
 | OBS-LIVE-BOT-07 | Local TTS Engine | **PASS — Piper local, WAV PCM real e integração Ollama + TTS validados; sem playback OBS** |
-| OBS-LIVE-BOT-08 | OBS Narration & Audio Routing | em validação final — playback real smoke PASS; testes/regressão e finalização Git pendentes |
+| OBS-LIVE-BOT-08 | OBS Narration & Audio Routing | **PASS — source dedicada, fila FIFO bounded, playback OBS real, routing Track 1/MonitorOff, APIs, regressão e finalização Git verificados** |
 | OBS-LIVE-BOT-09 | Human Response Timeout | planejada |
 | OBS-LIVE-BOT-10 | Automatic Response Engine | planejada |
 | OBS-LIVE-BOT-11 | Optional AI Provider | planejada |
@@ -25,6 +25,6 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 - **Módulo 05 — Live Command Center:** aplicação Windows centralizadora.
 - **Módulo 06 — Configuration, Backup & Restore:** configurações, backup/restore integral do OBS e Job automático no fechamento do OBS.
 
-Essas trilhas deverão ser quebradas em tasks numeradas quando chegarem à execução. `OBS-LIVE-BOT-07` foi concluída; nenhuma task posterior deve ser iniciada sem solicitação explícita.
+Essas trilhas deverão ser quebradas em tasks numeradas quando chegarem à execução. `OBS-LIVE-BOT-08` foi concluída; nenhuma task posterior deve ser iniciada sem solicitação explícita.
 
 Todas as tasks seguem `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST` e `NO PREMATURE INFRASTRUCTURE`. Adoção de banco, cache distribuído, broker, cloud ou novo serviço requer necessidade concreta documentada.

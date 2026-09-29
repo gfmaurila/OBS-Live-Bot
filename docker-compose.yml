@@ -30,6 +30,7 @@ services:
       TIKTOK_ENABLED: ${TIKTOK_ENABLED:-false}
       TIKTOK_CHANNEL: ${TIKTOK_CHANNEL:-}
       Interactions__Ollama__BaseUrl: http://host.docker.internal:11434
+      Narration__HostRuntimeDirectory: ${OBS_LIVE_BOT_TTS_HOST_DIRECTORY:-D:/OBS-Live/OBS-Live-Bot/data/runtime/tts}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

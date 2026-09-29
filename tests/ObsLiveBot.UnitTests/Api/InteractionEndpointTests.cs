@@ -83,6 +83,17 @@ public sealed class InteractionEndpointTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task NarrationDevelopmentEndpoint_IsNotMappedInProduction()
+    {
+        await using var factory = new InteractionApiFactory("Production");
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/narration/dev/test", new { text = "safe test" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("0")]
     [InlineData("101")]
@@ -109,6 +120,11 @@ public sealed class InteractionEndpointTests
         Assert.Contains("/api/interactions/recent", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/interactions/providers", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/interactions/dev/test", swagger, StringComparison.Ordinal);
+        Assert.Contains("/api/narration/state", swagger, StringComparison.Ordinal);
+        Assert.Contains("/api/narration/recent", swagger, StringComparison.Ordinal);
+        Assert.Contains("/api/narration/dev/test", swagger, StringComparison.Ordinal);
+        Assert.Contains("/api/narration/mute", swagger, StringComparison.Ordinal);
+        Assert.Contains("/api/narration/volume", swagger, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -122,6 +138,7 @@ public sealed class InteractionEndpointTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"interactions\":\"healthy\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"narration\":", payload, StringComparison.Ordinal);
     }
 
     private sealed class InteractionApiFactory(string environment) : WebApplicationFactory<Program>

@@ -12,7 +12,7 @@ namespace ObsLiveBot.Infrastructure.Obs;
 
 public sealed class ObsWebSocketClient(
     IOptions<ObsWebSocketOptions> options,
-    ILogger<ObsWebSocketClient> logger) : IObsProtocolClient, IAsyncDisposable
+    ILogger<ObsWebSocketClient> logger) : IObsProtocolClient, IObsRequestClient, IAsyncDisposable
 {
     private readonly ObsWebSocketOptions _options = options.Value;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
@@ -24,12 +24,19 @@ public sealed class ObsWebSocketClient(
     private CancellationTokenSource? _receiveCancellation;
     private TaskCompletionSource _completion = NewCompletionSource();
     private volatile bool _connected;
+    private int _disposed;
 
     public bool IsConnected => _connected;
 
     public Task Completion => _completion.Task;
 
     public ChannelReader<ObsExternalEvent> Events => _events.Reader;
+
+    public Task<JsonElement> SendRequestAsync(
+        string requestType,
+        object requestData,
+        CancellationToken cancellationToken) =>
+        RequestAsync(requestType, requestData, cancellationToken);
 
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
@@ -179,6 +186,9 @@ public sealed class ObsWebSocketClient(
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
         await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
         _lifecycleGate.Dispose();
         _sendGate.Dispose();
@@ -186,6 +196,12 @@ public sealed class ObsWebSocketClient(
     }
 
     private async Task<JsonElement> RequestAsync(string requestType, CancellationToken cancellationToken)
+        => await RequestAsync(requestType, new { }, cancellationToken).ConfigureAwait(false);
+
+    private async Task<JsonElement> RequestAsync(
+        string requestType,
+        object requestData,
+        CancellationToken cancellationToken)
     {
         var socket = _socket;
         if (!_connected || socket?.State != WebSocketState.Open)
@@ -205,7 +221,7 @@ public sealed class ObsWebSocketClient(
             var message = new
             {
                 op = 6,
-                d = new { requestType, requestId, requestData = new { } }
+                d = new { requestType, requestId, requestData }
             };
             await SendAsync(socket, message, cancellationToken).ConfigureAwait(false);
             return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);

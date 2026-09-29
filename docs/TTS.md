@@ -38,11 +38,11 @@ O TTS só é chamado para `Voice` e `TextAndVoice`. `Text` não chama TTS; `Igno
 - Não há reprodução automática no OBS.
 - Nenhum engine/modelo é baixado automaticamente pela aplicação.
 - Falhas de TTS são isoladas e registradas como resultado explícito sem derrubar os demais subsistemas.
-- **REAL LOCAL TTS: YES. OBS AUDIO PLAYBACK: NOT YET.** Nenhuma saída é reproduzida nem roteada para OBS nesta task.
+- Ao concluir a Task 07, **REAL LOCAL TTS: YES; OBS AUDIO PLAYBACK: NOT YET**: aquela task não reproduziu nem roteou áudio. A Task 08 acrescentou a source de narração dedicada e confirmou playback real no OBS, descrito em [`NARRATION.md`](NARRATION.md); isso não habilita autoplay de chat nem monitoramento local.
 
 ## Futuro, não implementado
 
 - distribuição licenciada do runtime/voz;
 - outras vozes e engine Windows alternativa;
-- roteamento ou playback no OBS (Task 08);
+- habilitação deliberada de autoplay de interações (desativado por padrão; configuração posterior);
 - provider cloud opcional.

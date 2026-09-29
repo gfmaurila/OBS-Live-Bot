@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-07` estão concluídas. A conexão OBS, Live State, Live Chat Ingestion, IA local Ollama e TTS local Piper possuem estado bounded em memória, validação, health checks e APIs controladas.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-07` estão concluídas. A Task 08 está em validação: playback local controlado pelo OBS foi implementado; Autoplay de interações permanece desativado.
 
 ## Serviços locais
 
@@ -43,8 +43,13 @@ Senha: `GfmStudioOS@Dev2026`
 | Interactions | GET | `/api/interactions/recent` | `http://localhost:5080/api/interactions/recent` |
 | Interactions | GET | `/api/interactions/providers` | `http://localhost:5080/api/interactions/providers` |
 | Interactions (Development) | POST | `/api/interactions/dev/test` | `http://localhost:5080/api/interactions/dev/test` |
+| Narration | GET | `/api/narration/state` | `http://localhost:5080/api/narration/state` |
+| Narration | GET | `/api/narration/recent` | `http://localhost:5080/api/narration/recent` |
+| Narration (Development) | POST | `/api/narration/dev/test` | `http://localhost:5080/api/narration/dev/test` |
+| Narration | PUT | `/api/narration/mute` | `http://localhost:5080/api/narration/mute` |
+| Narration | PUT | `/api/narration/volume` | `http://localhost:5080/api/narration/volume` |
 
-Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages`, `/api/chat/events`, `/api/interactions/state`, `/api/interactions/recent` e `/api/interactions/providers`.
+Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages`, `/api/chat/events`, `/api/interactions/state`, `/api/interactions/recent`, `/api/interactions/providers`, `/api/narration/state` e `/api/narration/recent`.
 
 ## AI Interaction e TTS
 
@@ -54,7 +59,7 @@ O subsistema de interações processa eventos normalizados pelo mesmo pipeline d
 - `DevelopmentTextToSpeechProvider` continua disponível para testes e fallback; ele retorna metadados simulados e não gera áudio real.
 - `OllamaAiInteractionProvider` usa IA real local; `DevelopmentAiInteractionProvider` permanece disponível para testes e fallback explícito.
 - `PiperTextToSpeechProvider` gera WAV PCM real localmente com a voz `pt_BR-faber-medium` (português brasileiro, 22.050 Hz, mono, PCM 16-bit).
-- **REAL LOCAL AI: YES. REAL LOCAL TTS: YES. OBS AUDIO PLAYBACK: NOT YET.** Nenhum áudio é reproduzido ou roteado automaticamente para o OBS; isso permanece fora da Task 07.
+- **REAL LOCAL AI: YES. REAL LOCAL TTS: YES.** O playback de narração controlado no OBS está sendo validado na Task 08; não há autoplay de conversas por padrão.
 - Nenhuma API paga, banco, broker, cache distribuído ou novo container é necessário.
 - O endpoint `/api/interactions/dev/test` só é registrado quando `ASPNETCORE_ENVIRONMENT=Development`.
 
@@ -114,6 +119,21 @@ Esse endpoint continua entrando no pipeline normal; com `Interactions:AiProvider
 - Áudios transitórios ficam em `data/runtime/tts/`; limpeza bounded: até 100 arquivos e retenção máxima de 60 minutos.
 - Fallback para `DevelopmentTextToSpeechProvider` é habilitado explicitamente; quando usado, o resultado indica simulação e não deve ser tratado como áudio real.
 - Limitação de distribuição: a licença de redistribuição do modelo de voz não está confirmada; não incluir a voz em distribuição do StudioOS sem análise jurídica/licenciamento independente. Detalhes e fontes em `docs/TTS.md`.
+
+## Narração no OBS
+
+A Task 08 adiciona `INarrationService` e um playback adapter sobre a conexão OBS WebSocket já existente. Piper produz WAV; somente artefatos registrados pelo pipeline dentro de `data/runtime/tts/` podem ser enfileirados. Como a API roda em container, o artefato é mapeado pelo GUID para o diretório host configurado em `Narration:HostRuntimeDirectory`; nenhum path arbitrário é aceito.
+
+- Source dedicada: `GFM StudioOS - Narration`, tipo Media Source (`ffmpeg_source`), adicionada às cenas existentes sem recriá-las.
+- Playback: FIFO, fila bounded de 5, uma reprodução por vez, sem interromper a atual; duração máxima de 15 s, timeout de início de 5 s e playback de 25 s.
+- Roteamento verificado no profile `ETS`: somente Track 1 (track de live e `RecTracks=1` da gravação local configurada). Monitoring `Monitor Off` evita uma segunda rota de retorno/monitoramento.
+- Volume inicial 70% e mute independentes da source. API: `PUT /api/narration/volume` (`{"volume":70}`) e `PUT /api/narration/mute` (`{"muted":false}`).
+- `Narration:Enabled=true`; `Narration:AutoPlayInteractions=false`. Mensagens de chat não começam a falar automaticamente. O POST DEV gera frase controlada com Piper e usa a mesma fila/playback, sem aceitar caminho de arquivo.
+- Para smoke test em Development: `POST /api/narration/dev/test` com `{"text":"Teste de narração do GFM StudioOS."}`; acompanhe `GET /api/narration/recent` até `Completed`. Isso não inicia live nem gravação.
+- Estado `Queued`, `Preparing`, `Playing`, `Completed`/`Failed`, fila, volume, mute e tracks estão em `GET /api/narration/state`. `GET /health` expõe health separado de Narration.
+- **REAL OBS NARRATION: YES. OBS AUDIO PLAYBACK: não toca no dispositivo local por monitoramento (Monitor Off); nenhuma transmissão pública é iniciada.**
+
+Detalhes de lifecycle, segurança e limitações: `docs/NARRATION.md`.
 
 ## Arquitetura
 C#/.NET 10 é o núcleo (ASP.NET Core, Vertical Slice, CQRS, MediatR oficial, Ardalis.Result, FluentValidation, Serilog, OpenAPI, Domain Events e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador local.

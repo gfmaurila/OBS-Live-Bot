@@ -209,6 +209,27 @@ LiveChatEvent / DEV request
 - Não há memória persistente, banco, Redis, broker, cloud, execução automática de OBS ou reprodução automática de áudio.
 - `IInteractionEventPublisher` usa `NoOpInteractionEventPublisher`; integrações com n8n, UI, SignalR e OBS permanecem futuras.
 
+## OBS Narration & Audio Routing (OBS-LIVE-BOT-08)
+
+```text
+InteractionCompletedNotification (somente AutoPlayInteractions=true)
+  ou POST /api/narration/dev/test (somente Development)
+    -> INarrationService / bounded FIFO
+       -> TTS artifact validation + lease
+          -> IAudioPlaybackService
+             -> IObsRequestClient (mesmo ObsWebSocketClient/conexão)
+                -> OBS ffmpeg_source Media Source
+```
+
+- `InteractionOrchestrator` não conhece OBS. `INarrationService` mantém fila FIFO bounded em memória, um único reader/playback, estados, eventos MediatR e buffer limitado; fila cheia é rejeitada explicitamente.
+- `AutoPlayInteractions` inicia `false`. Inicialização verifica/limpa somente a source própria se ela já existir; não cria source nem reproduz áudio histórico. O endpoint DEV gera texto controlado por Piper e submete à mesma fila; não recebe path.
+- `GFM StudioOS - Narration` usa o input OBS built-in `ffmpeg_source`, compartilhado como scene item nas cenas existentes. O arquivo de runtime é validado no container e seu nome GUID é mapeado para o diretório host Windows configurado; paths arbitrários são rejeitados.
+- A source só recebe áudio na Track 1, sem monitoring. No profile/collection observados (`ETS`), `TrackIndex=1` e `RecTracks=1`; assim a configuração atende a saída stream e a gravação configurada. Não foi iniciada live nem gravação local no smoke.
+- A fila não interrompe narração atual. `GetMediaInputStatus` confirma `Playing` e `Ended`; timeout protege início/fim. Falha/disconnect vira resultado Failed sem replay automático, enquanto o processo API e subsistemas independentes continuam ativos.
+- O provider Piper mantém artifact lease enquanto enfileirado/tocando para que cleanup por tempo/quantidade não remova áudio em uso. A lease é liberada ao encerrar a tentativa.
+- Mute e volume controlam somente a source de narração. Valores são limitados a 0–100%; default 70%. Monitoring fixo `MonitorOff` evita retorno/eco por duplicação de monitoramento.
+- Implementado: source/media playback, API, health, bounded queue/events e controls. Desenvolvimento: POST de smoke é exposto só em `Development`. Futuro: autoplay deve ser ativado explicitamente; UI/n8n publishers e ajustes de roteamento adicionais não fazem parte desta task.
+
 ## Local AI Engine / Ollama (OBS-LIVE-BOT-06)
 
 ```text

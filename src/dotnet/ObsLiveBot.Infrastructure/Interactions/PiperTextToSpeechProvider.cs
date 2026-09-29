@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Domain.Interactions;
+using ObsLiveBot.Domain.Narration;
 
 namespace ObsLiveBot.Infrastructure.Interactions;
 
@@ -100,7 +101,10 @@ public sealed record TtsAudioMetadata(
     long DataBytes,
     TimeSpan Duration);
 
-public sealed class TtsAudioStore(IOptions<InteractionOptions> options, TimeProvider timeProvider)
+public sealed class TtsAudioStore(
+    IOptions<InteractionOptions> options,
+    TimeProvider timeProvider,
+    IAudioArtifactLeaseRegistry? artifactLeases = null)
 {
     private readonly PiperTtsOptions _options = options.Value.Tts;
     private readonly string _root = EnsureTrailingSeparator(
@@ -124,7 +128,8 @@ public sealed class TtsAudioStore(IOptions<InteractionOptions> options, TimeProv
             .EnumerateFiles("*.wav", SearchOption.TopDirectoryOnly)
             .OrderBy(file => file.LastWriteTimeUtc)
             .ToList();
-        foreach (var file in files.Where(file => file.LastWriteTimeUtc < cutoff).ToArray())
+        foreach (var file in files.Where(file =>
+                     file.LastWriteTimeUtc < cutoff && artifactLeases?.IsLeased(file.FullName) != true).ToArray())
         {
             Delete(file.FullName);
             files.Remove(file);
@@ -133,8 +138,40 @@ public sealed class TtsAudioStore(IOptions<InteractionOptions> options, TimeProv
         var allowed = Math.Max(0, _options.MaxFiles - reserveSlots);
         while (files.Count > allowed)
         {
-            Delete(files[0].FullName);
-            files.RemoveAt(0);
+            var oldestRemovable = files.FindIndex(file => artifactLeases?.IsLeased(file.FullName) != true);
+            if (oldestRemovable < 0) break;
+            Delete(files[oldestRemovable].FullName);
+            files.RemoveAt(oldestRemovable);
+        }
+    }
+
+    public NarrationArtifactValidation ValidateArtifact(
+        NarrationAudioArtifact artifact,
+        string allowedRuntimeDirectory)
+    {
+        try
+        {
+            var allowedRoot = EnsureTrailingSeparator(Path.GetFullPath(allowedRuntimeDirectory));
+            if (!string.Equals(allowedRoot, _root, PathComparison))
+                return new NarrationArtifactValidation(false, "NARRATION_RUNTIME_DIRECTORY_MISMATCH", default, 0, 0, 0);
+
+            var expected = Path.GetFullPath(Path.Combine(Root, $"{artifact.InteractionId:N}.wav"));
+            var supplied = Path.GetFullPath(artifact.Path);
+            EnsureContained(supplied);
+            if (!string.Equals(expected, supplied, PathComparison) ||
+                !string.Equals(Path.GetExtension(supplied), ".wav", StringComparison.OrdinalIgnoreCase))
+                return new NarrationArtifactValidation(false, "NARRATION_ARTIFACT_UNREGISTERED", default, 0, 0, 0);
+
+            var audio = ValidateWav(supplied);
+            if (audio is null)
+                return new NarrationArtifactValidation(false, "NARRATION_AUDIO_INVALID", default, 0, 0, 0);
+
+            return new NarrationArtifactValidation(
+                true, null, audio.Duration, audio.SampleRate, audio.BitDepth, audio.Channels);
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return new NarrationArtifactValidation(false, "NARRATION_ARTIFACT_INVALID", default, 0, 0, 0);
         }
     }
 

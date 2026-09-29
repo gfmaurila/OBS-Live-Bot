@@ -12,7 +12,7 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 | OBS-LIVE-BOT-05 | AI Interaction & TTS Foundation | **PASS — decisão/cooldown/contexto, providers DEV, sanitização, TTS simulado, buffer, health e APIs** |
 | OBS-LIVE-BOT-06 | Local AI Engine / Ollama Integration | **PASS — IA real local, fallback DEV, timeout/cancelamento, overload bounded, métricas, health e smoke real** |
 | OBS-LIVE-BOT-07 | Local TTS Engine | **PASS — Piper local, WAV PCM real e integração Ollama + TTS validados; sem playback OBS** |
-| OBS-LIVE-BOT-08 | OBS Narration & Audio Routing | planejada |
+| OBS-LIVE-BOT-08 | OBS Narration & Audio Routing | em validação final — playback real smoke PASS; testes/regressão e finalização Git pendentes |
 | OBS-LIVE-BOT-09 | Human Response Timeout | planejada |
 | OBS-LIVE-BOT-10 | Automatic Response Engine | planejada |
 | OBS-LIVE-BOT-11 | Optional AI Provider | planejada |

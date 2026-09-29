@@ -1,8 +1,8 @@
 # AI Interaction, Ollama e TTS local
 
-## Escopo implementado (Tasks 05–07)
+## Escopo implementado (Tasks 05–08)
 
-A foundation recebe eventos normalizados, toma decisão determinística, aplica prevenção de loop/cooldown, monta contexto bounded e executa AI, sanitização, TTS opcional, notificações MediatR, buffer e publisher. Não há integração real de chat de plataforma, STT, memória persistente, RAG, automação/playback OBS ou Content Engine.
+A foundation recebe eventos normalizados, toma decisão determinística, aplica prevenção de loop/cooldown, monta contexto bounded e executa AI, sanitização, TTS opcional, notificações MediatR e buffer. A Task 08 acrescenta narração OBS isolada, com fila e playback real acionados explicitamente; autoplay de interações permanece desligado por padrão. Não há integração real de chat de plataforma, STT, memória persistente, RAG ou Content Engine.
 
 Mensagens comuns são ignoradas por padrão. `!studio` e solicitações do endpoint DEV podem responder. Identidade própria é provider-scoped. O buffer guarda até 100 resultados, oldest eviction e sequência monotônica. O publisher inicial é NoOp.
 
@@ -20,6 +20,8 @@ O provider selecionado é `PiperTextToSpeechProvider`, com voz `pt_BR-faber-medi
 
 Piper tem timeout de 20 s, concorrência 1, fila bounded de 2 solicitações e espera máxima de 2 s. Artefatos transitórios usam `data/runtime/tts/`, GUID no nome e cleanup limitado a 100 arquivos/60 minutos. `AllowDevelopmentFallback` é explícito. Se TTS falhar, o texto AI permanece no resultado; fallback e simulação são indicados separadamente, nunca como áudio real.
 
+TTS concluído e OBS playback concluído são estados distintos. Se `Narration:AutoPlayInteractions=true` for explicitamente habilitado, um `InteractionCompletedNotification` pode enfileirar o artefato para `INarrationService`; default atual `false`. A API de narração Development também sintetiza com o provider real e usa a mesma fila, sem aceitar paths. Consulte [NARRATION.md](NARRATION.md) para routing/estados.
+
 ## API
 
 - `GET /api/interactions/state`
@@ -27,8 +29,16 @@ Piper tem timeout de 20 s, concorrência 1, fila bounded de 2 solicitações e e
 - `GET /api/interactions/providers`
 - `POST /api/interactions/dev/test` somente em `Development`
 
-O endpoint POST usa o mesmo command/validation/orchestrator do pipeline. Com `responseMode: TextAndVoice`, a configuração atual pode exercitar Ollama + Piper reais; a execução gera artefato, sem reprodução automática.
+Narração/playback:
+
+- `GET /api/narration/state`
+- `GET /api/narration/recent`
+- `POST /api/narration/dev/test` somente em `Development`
+- `PUT /api/narration/mute`
+- `PUT /api/narration/volume`
+
+O endpoint de interação POST usa o mesmo command/validation/orchestrator do pipeline. Com `responseMode: TextAndVoice`, a configuração pode exercitar Ollama + Piper reais e gerar um artefato. Com a flag padrão desligada, gerar WAV não inicia playback OBS.
 
 ## Estado
 
-**REAL LOCAL AI: YES. REAL LOCAL TTS: YES. OBS AUDIO PLAYBACK: NOT YET.** Não existe chatbot real de Twitch/YouTube/TikTok nesta foundation; OBS narration/audio routing pertence à Task 08.
+**REAL LOCAL AI: YES. REAL LOCAL TTS: YES. REAL OBS NARRATION: YES.** `Narration:AutoPlayInteractions=false`; nenhuma transmissão pública é iniciada pelo serviço. Não existe chatbot real de Twitch/YouTube/TikTok nesta foundation.

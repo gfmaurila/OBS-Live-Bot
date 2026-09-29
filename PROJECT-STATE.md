@@ -19,8 +19,11 @@ IN_PROGRESS
 - OBS-LIVE-BOT-06 — IA real local com Ollama: provider Infrastructure substituível, modelo `qwen3:4b-instruct-2507-q4_K_M`, timeout/cancelamento, concorrência e overload bounded, fallback DEV explícito, métricas/health e smoke test real validados.
 - OBS-LIVE-BOT-07 — TTS local real com Piper 1.2.0 e voz `pt_BR-faber-medium`: artefato WAV PCM validado e pipeline Ollama + Piper exercitado sem playback OBS; provider DEV, fallback, timeout/cancelamento, concorrência, overload, armazenamento e cleanup bounded preservados.
 
+## Em execução
+- OBS-LIVE-BOT-08 — playback real de narração via OBS Media Source dedicado; smoke Piper → WAV → OBS confirmou `Playing` e `Completed`, routing restrito à Track 1, `MonitorOff`, mute/volume independentes e `AutoPlayInteractions=false`. Testes finais, regressão, documentação e Git ainda pendentes; não registrar PASS antes de concluir tudo.
+
 ## Próxima task executável
-OBS-LIVE-BOT-08 — OBS Narration & Audio Routing é a próxima task, mas não deve ser iniciada automaticamente. A próxima execução exige solicitação explícita.
+OBS-LIVE-BOT-08 — OBS Narration & Audio Routing está em execução. Não iniciar task posterior automaticamente; aguardar solicitação explícita após validação/finalização.
 
 ## Decisão arquitetural permanente
 O projeto adota `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST`, `NO PREMATURE INFRASTRUCTURE` e `NO PREMATURE MICROSERVICES`. SQL Server não faz parte da stack obrigatória. EF Core permanece disponível somente quando houver necessidade concreta de persistência e sem provider obrigatório.

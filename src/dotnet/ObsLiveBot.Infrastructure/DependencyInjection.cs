@@ -12,6 +12,7 @@ using ObsLiveBot.Infrastructure.Events;
 using ObsLiveBot.Infrastructure.Health;
 using ObsLiveBot.Infrastructure.Interactions;
 using ObsLiveBot.Infrastructure.Obs;
+using ObsLiveBot.Application.Narration;
 
 namespace ObsLiveBot.Infrastructure;
 
@@ -21,7 +22,9 @@ public static class DependencyInjection
     {
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IValidateOptions<ObsWebSocketOptions>, ObsWebSocketOptionsValidator>();
-        services.AddSingleton<IObsProtocolClient, ObsWebSocketClient>();
+        services.AddSingleton<ObsWebSocketClient>();
+        services.AddSingleton<IObsProtocolClient>(provider => provider.GetRequiredService<ObsWebSocketClient>());
+        services.AddSingleton<IObsRequestClient>(provider => provider.GetRequiredService<ObsWebSocketClient>());
         services.AddSingleton<IReconnectDelay, ProgressiveReconnectDelay>();
         services.AddSingleton<IDomainEventPublisher, DomainEventPublisher>();
         services.AddSingleton<ILiveEventPublisher, NoOpLiveEventPublisher>();
@@ -112,6 +115,26 @@ public static class DependencyInjection
         services.AddSingleton<IInteractionProviderRegistry, InteractionProviderRegistry>();
         services.AddSingleton<IInteractionEventPublisher, NoOpInteractionEventPublisher>();
         services.AddHealthChecks().AddCheck<InteractionHealthCheck>("interactions");
+        return services;
+    }
+
+    public static IServiceCollection AddNarrationInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<NarrationOptions>()
+            .Bind(configuration.GetSection(NarrationOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<NarrationOptions>, NarrationOptionsValidator>();
+        services.AddSingleton<IAudioArtifactLeaseRegistry, AudioArtifactLeaseRegistry>();
+        services.AddSingleton<INarrationArtifactValidator, NarrationArtifactValidator>();
+        services.AddSingleton<IAudioPlaybackService, ObsAudioPlaybackService>();
+        services.AddSingleton<INarrationEventPublisher, NoOpNarrationEventPublisher>();
+        services.AddSingleton<NarrationService>();
+        services.AddSingleton<INarrationService>(provider => provider.GetRequiredService<NarrationService>());
+        services.AddHostedService(provider => provider.GetRequiredService<NarrationService>());
+        services.AddHealthChecks().AddCheck<NarrationHealthCheck>("narration");
         return services;
     }
 

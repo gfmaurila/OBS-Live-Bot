@@ -53,6 +53,7 @@ public static class SocialStreamNinjaConfigurationLoader
         values[$"{prefix}:Enabled"] = provider.GetProperty("enabled").GetBoolean().ToString();
         values[$"{prefix}:Channel"] = provider.TryGetProperty("channel", out var channel) ? channel.GetString() : null;
         values[$"{prefix}:AuthMode"] = provider.TryGetProperty("authMode", out var authMode) ? authMode.GetString() : null;
+        values[$"{prefix}:LiveChatUrl"] = provider.TryGetProperty("liveChatUrl", out var liveChatUrl) ? liveChatUrl.GetString() : null;
     }
 
     private static bool GetBoolean(JsonElement element, string name, bool fallback) =>

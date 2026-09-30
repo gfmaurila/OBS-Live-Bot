@@ -5,6 +5,7 @@ using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Application.Events;
 using ObsLiveBot.Domain.Chat;
 using ObsLiveBot.Domain.Interactions;
+using System.Collections.Generic;
 
 namespace ObsLiveBot.Application.Interactions;
 
@@ -22,6 +23,9 @@ public sealed class InteractionOrchestrator(
     ILogger<InteractionOrchestrator> logger) : IInteractionOrchestrator
 {
     private long _sequence;
+    private readonly object _dedupeGate = new();
+    private readonly HashSet<string> _processedEvents = new(StringComparer.Ordinal);
+    private readonly Queue<string> _processedOrder = new();
 
     public async Task<InteractionResult> ProcessAsync(
         LiveChatEvent chatEvent,
@@ -30,8 +34,31 @@ public sealed class InteractionOrchestrator(
     {
         var sequence = Interlocked.Increment(ref _sequence);
         var decision = decisionPolicy.Decide(chatEvent, requestedMode, sequence);
-        if (decision.DecisionType == InteractionDecisionType.Respond &&
-            !cooldown.TryAcquire(decision.Provider, decision.ChannelId, decision.UserId))
+        if (!TryMarkUnique(chatEvent))
+        {
+            decision = decision with
+            {
+                DecisionType = InteractionDecisionType.Ignore,
+                Reason = "Duplicate",
+                RequestedResponseMode = InteractionResponseMode.None
+            };
+        }
+        else if (decision.DecisionType == InteractionDecisionType.Respond && requestedMode is null)
+        {
+            var cooldownResult = cooldown.CheckAutomatic(
+                decision.Provider, decision.ChannelId, decision.UserId);
+            if (!cooldownResult.Accepted)
+            {
+                decision = decision with
+                {
+                    DecisionType = InteractionDecisionType.Ignore,
+                    Reason = cooldownResult.RejectionReason ?? "CooldownActive",
+                    RequestedResponseMode = InteractionResponseMode.None
+                };
+            }
+        }
+        else if (decision.DecisionType == InteractionDecisionType.Respond &&
+                 !cooldown.TryAcquire(decision.Provider, decision.ChannelId, decision.UserId))
         {
             decision = decision with
             {
@@ -40,6 +67,19 @@ public sealed class InteractionOrchestrator(
                 RequestedResponseMode = InteractionResponseMode.None
             };
         }
+
+        logger.LogInformation(
+            "INTERACTION_DECISION interactionId={InteractionId} provider={Provider} providerMessageId={ProviderMessageId} providerUserId={ProviderUserId} trigger={Trigger} decision={Decision} reason={Reason} receivedAt={ReceivedAt} acceptedAt={AcceptedAt} correlationId={CorrelationId}",
+            decision.DecisionId,
+            decision.Provider,
+            decision.ProviderMessageId,
+            decision.UserId,
+            decision.Reason is "CommandTrigger" or "BotMention" ? decision.Reason : null,
+            decision.DecisionType,
+            decision.Reason,
+            decision.CreatedAtUtc,
+            decision.DecisionType == InteractionDecisionType.Respond ? timeProvider.GetUtcNow() : null,
+            decision.CorrelationId);
 
         await mediator.Publish(new InteractionDecidedNotification(decision), cancellationToken)
             .ConfigureAwait(false);
@@ -51,9 +91,17 @@ public sealed class InteractionOrchestrator(
             return ignored;
         }
 
+        var aiStartedAt = timeProvider.GetUtcNow();
+        logger.LogInformation(
+            "INTERACTION_AI_STARTED interactionId={InteractionId} provider={Provider} providerMessageId={ProviderMessageId} correlationId={CorrelationId} startedAt={StartedAt}",
+            decision.DecisionId, decision.Provider, decision.ProviderMessageId, decision.CorrelationId, aiStartedAt);
         var aiOutcome = await GenerateAiAsync(
             contextBuilder.Build(chatEvent, decision), decision, cancellationToken).ConfigureAwait(false);
         var aiResponse = aiOutcome.Response;
+        logger.LogInformation(
+            "INTERACTION_AI_COMPLETED interactionId={InteractionId} provider={Provider} success={Success} providerName={AiProvider} durationMs={DurationMs} correlationId={CorrelationId} completedAt={CompletedAt}",
+            decision.DecisionId, decision.Provider, aiResponse.Success, aiResponse.ProviderName,
+            aiResponse.Duration.TotalMilliseconds, decision.CorrelationId, timeProvider.GetUtcNow());
 
         if (!aiResponse.Success)
         {
@@ -84,11 +132,17 @@ public sealed class InteractionOrchestrator(
                 primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
         }
 
+        if (requestedMode is null)
+            cooldown.CommitAutomatic(decision.Provider, decision.ChannelId, decision.UserId);
+
         TextToSpeechResult? ttsResult = null;
         var ttsFallbackUsed = false;
         string? primaryTtsErrorCode = null;
         if (decision.RequestedResponseMode is InteractionResponseMode.Voice or InteractionResponseMode.TextAndVoice)
         {
+            logger.LogInformation(
+                "INTERACTION_TTS_STARTED interactionId={InteractionId} provider={Provider} correlationId={CorrelationId} startedAt={StartedAt}",
+                decision.DecisionId, decision.Provider, decision.CorrelationId, timeProvider.GetUtcNow());
             var ttsOutcome = await GenerateTtsAsync(
                 new TextToSpeechRequest(
                     decision.DecisionId,
@@ -101,6 +155,10 @@ public sealed class InteractionOrchestrator(
             ttsResult = ttsOutcome.Response;
             ttsFallbackUsed = ttsOutcome.FallbackUsed;
             primaryTtsErrorCode = ttsOutcome.PrimaryErrorCode;
+            logger.LogInformation(
+                "INTERACTION_TTS_COMPLETED interactionId={InteractionId} provider={Provider} success={Success} ttsProvider={TtsProvider} durationMs={DurationMs} correlationId={CorrelationId} completedAt={CompletedAt}",
+                decision.DecisionId, decision.Provider, ttsResult.Success, ttsResult.ProviderName,
+                ttsResult.Duration.TotalMilliseconds, decision.CorrelationId, timeProvider.GetUtcNow());
 
             if (!ttsResult.Success)
             {
@@ -162,6 +220,21 @@ public sealed class InteractionOrchestrator(
             ttsResult?.Channels);
         await CompleteAsync(completed, cancellationToken).ConfigureAwait(false);
         return completed;
+    }
+
+    private bool TryMarkUnique(LiveChatEvent chatEvent)
+    {
+        var eventIdentity = !string.IsNullOrWhiteSpace(chatEvent.ProviderEventId)
+            ? $"{chatEvent.Provider}:{chatEvent.ProviderEventId}"
+            : $"{chatEvent.Provider}:{chatEvent.EventId:N}";
+        lock (_dedupeGate)
+        {
+            if (!_processedEvents.Add(eventIdentity)) return false;
+            _processedOrder.Enqueue(eventIdentity);
+            while (_processedOrder.Count > Math.Max(1, options.Value.CooldownCapacity))
+                _processedEvents.Remove(_processedOrder.Dequeue());
+            return true;
+        }
     }
 
     private InteractionResult CreateResult(

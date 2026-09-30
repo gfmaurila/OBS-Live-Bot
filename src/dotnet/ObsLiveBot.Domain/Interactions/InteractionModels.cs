@@ -42,7 +42,8 @@ public sealed record InteractionDecision(
     InteractionResponseMode RequestedResponseMode,
     DateTimeOffset CreatedAtUtc,
     long Sequence,
-    string CorrelationId);
+    string CorrelationId,
+    string? ProviderMessageId = null);
 
 public sealed record AiInteractionRequest(
     Guid InteractionId,

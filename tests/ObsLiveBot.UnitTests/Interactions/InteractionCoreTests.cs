@@ -23,6 +23,7 @@ public sealed class InteractionCoreTests
         Assert.Equal(InteractionStatus.Ignored, result.Status);
         Assert.Equal(0, harness.Ai.Calls);
         Assert.Equal(0, harness.Tts.Calls);
+        Assert.Equal("NoTrigger", result.Decision.Reason);
     }
 
     [Fact]
@@ -195,7 +196,148 @@ public sealed class InteractionCoreTests
             Event(userId: userId, isBot: isBot), InteractionResponseMode.Text, default);
 
         Assert.Equal(InteractionStatus.Ignored, result.Status);
-        Assert.Equal("SelfOrBotMessage", result.Decision.Reason);
+        Assert.Equal(isBot ? "BotMessage" : "SelfMessage", result.Decision.Reason);
+        Assert.Equal(0, harness.Ai.Calls);
+    }
+
+    [Fact]
+    public async Task AutomaticInteraction_DefaultOffRejectsWithoutCallingProviders()
+    {
+        var harness = Harness();
+        var result = await harness.Orchestrator.ProcessAsync(Event("!studio alô"), null, default);
+        Assert.Equal(InteractionStatus.Ignored, result.Status);
+        Assert.Equal("AutoPlayDisabled", result.Decision.Reason);
+        Assert.Equal(0, harness.Ai.Calls);
+        Assert.Equal(0, harness.Tts.Calls);
+    }
+
+    [Fact]
+    public async Task AutomaticInteraction_ReceiptWhileDisabledCannotBeAcceptedAfterEnable()
+    {
+        var harness = Harness(options => options.AutoPlayInteractions = true);
+        var chatEvent = Event("!studio stale") with
+        {
+            Metadata = new Dictionary<string, string?> { ["interaction.autoPlayAtReceipt"] = "false" }
+        };
+        var result = await harness.Orchestrator.ProcessAsync(chatEvent, null, default);
+        Assert.Equal("AutoPlayDisabled", result.Decision.Reason);
+        Assert.Equal(0, harness.Ai.Calls);
+        Assert.Equal(0, harness.Tts.Calls);
+    }
+
+    [Theory]
+    [InlineData("!studio me dá um alô", "CommandTrigger")]
+    [InlineData("GFM StudioOS, me dá um alô", "BotMention")]
+    public async Task AutomaticTrigger_UsesSharedVoicePipeline(string message, string reason)
+    {
+        var harness = Harness(options => options.AutoPlayInteractions = true);
+        var chatEvent = Event(message) with
+        {
+            Metadata = new Dictionary<string, string?>
+            {
+                ["source.adapter"] = "SocialStreamNinja",
+                ["interaction.suppressed"] = "true"
+            }
+        };
+        var result = await harness.Orchestrator.ProcessAsync(chatEvent, null, default);
+        Assert.Equal(InteractionStatus.Completed, result.Status);
+        Assert.Equal(reason, result.Decision.Reason);
+        Assert.Equal(1, harness.Ai.Calls);
+        Assert.Equal(1, harness.Tts.Calls);
+        Assert.Equal(InteractionResponseMode.Voice, result.Decision.RequestedResponseMode);
+        Assert.Equal("[DEV AI] me dá um alô", result.ResponseText);
+    }
+
+    [Fact]
+    public async Task AutomaticInteraction_DuplicateProviderEventRunsOnce()
+    {
+        var harness = Harness(options => options.AutoPlayInteractions = true);
+        var chatEvent = Event("!studio alô");
+        var first = await harness.Orchestrator.ProcessAsync(chatEvent, null, default);
+        var second = await harness.Orchestrator.ProcessAsync(
+            chatEvent with { EventId = Guid.NewGuid() }, null, default);
+        Assert.Equal(InteractionStatus.Completed, first.Status);
+        Assert.Equal("Duplicate", second.Decision.Reason);
+        Assert.Equal(1, harness.Ai.Calls);
+        Assert.Equal(1, harness.Tts.Calls);
+    }
+
+    [Fact]
+    public async Task AutomaticInteraction_RejectsOversizedMessageBeforeAi()
+    {
+        var harness = Harness(options => options.AutoPlayInteractions = true);
+        var result = await harness.Orchestrator.ProcessAsync(
+            Event(new string('x', 4_001) + " !studio hello"), null, default);
+        Assert.Equal("MessageTooLong", result.Decision.Reason);
+        Assert.Equal(0, harness.Ai.Calls);
+        Assert.Equal(0, harness.Tts.Calls);
+    }
+
+    [Fact]
+    public void AutomaticCooldown_UserIdentityIsProviderScoped()
+    {
+        var time = new ManualTimeProvider();
+        var tracker = new InteractionCooldownTracker(
+            Options.Create(new InteractionOptions { GlobalCooldownSeconds = 10, UserCooldownSeconds = 30 }), time);
+        Assert.True(tracker.TryAcquireAutomatic(LiveChatProviderType.Twitch, "channel", "same-user").Accepted);
+        time.Now = time.Now.AddSeconds(10);
+        Assert.True(tracker.TryAcquireAutomatic(LiveChatProviderType.YouTube, "channel", "same-user").Accepted);
+    }
+
+    [Fact]
+    public void InteractionWorkQueue_IsBoundedAndCountsRejections()
+    {
+        var queue = new InteractionWorkQueue();
+        for (var i = 0; i < queue.Capacity; i++)
+            Assert.True(queue.TryEnqueue(Event($"message-{i}")));
+        Assert.False(queue.TryEnqueue(Event("overflow")));
+        Assert.Equal(queue.Capacity, queue.Count);
+        Assert.Equal(1, queue.RejectedCount);
+    }
+
+    [Fact]
+    public async Task AutomaticInteraction_EnforcesGlobalThenProviderScopedUserCooldown()
+    {
+        var harness = Harness(options => options.AutoPlayInteractions = true);
+        var first = await harness.Orchestrator.ProcessAsync(Event("!studio hi"), null, default);
+        var global = await harness.Orchestrator.ProcessAsync(
+            Event("!studio hi", userId: "other-user"), null, default);
+        harness.Time.Now = harness.Time.Now.AddSeconds(10);
+        var user = await harness.Orchestrator.ProcessAsync(
+            Event("!studio hi", userId: "user-1"), null, default);
+        Assert.Equal(InteractionStatus.Completed, first.Status);
+        Assert.Equal("GlobalCooldown", global.Decision.Reason);
+        Assert.Equal("UserCooldown", user.Decision.Reason);
+        Assert.Equal(1, harness.Ai.Calls);
+    }
+
+    [Fact]
+    public async Task AutomaticInteraction_SanitizationRejectionDoesNotConsumeCooldown()
+    {
+        var ai = new FakeAiProvider(request => new AiInteractionResponse(
+            "  ", "Development", "test", TimeSpan.Zero, true, null, request.CorrelationId, true));
+        var harness = Harness(options => options.AutoPlayInteractions = true, ai: ai);
+        var first = await harness.Orchestrator.ProcessAsync(Event("!studio hello"), null, default);
+        var second = await harness.Orchestrator.ProcessAsync(Event("!studio hello again"), null, default);
+        Assert.Equal("AI_EMPTY_RESPONSE", first.ErrorCode);
+        Assert.Equal("AI_EMPTY_RESPONSE", second.ErrorCode);
+        Assert.Equal(2, ai.Calls);
+        Assert.Equal(0, harness.Tts.Calls);
+    }
+
+    [Theory]
+    [InlineData("interaction.generatedByStudioOS")]
+    [InlineData("interaction.isSelf")]
+    public async Task AutomaticInteraction_RejectsGeneratedOrSelfMetadata(string metadataKey)
+    {
+        var harness = Harness(options => options.AutoPlayInteractions = true);
+        var chatEvent = Event("!studio loop") with
+        {
+            Metadata = new Dictionary<string, string?> { [metadataKey] = "true" }
+        };
+        var result = await harness.Orchestrator.ProcessAsync(chatEvent, null, default);
+        Assert.Equal(InteractionStatus.Ignored, result.Status);
+        Assert.Equal("SelfMessage", result.Decision.Reason);
         Assert.Equal(0, harness.Ai.Calls);
     }
 
@@ -430,7 +572,7 @@ public sealed class InteractionCoreTests
             options,
             time,
             NullLogger<InteractionOrchestrator>.Instance);
-        return new TestHarness(orchestrator, buffer, ai, tts);
+        return new TestHarness(orchestrator, buffer, ai, tts, time);
     }
 
     private static LiveChatEvent Event(
@@ -461,7 +603,8 @@ public sealed class InteractionCoreTests
         InteractionOrchestrator Orchestrator,
         InteractionBuffer Buffer,
         FakeAiProvider Ai,
-        FakeTtsProvider Tts);
+        FakeTtsProvider Tts,
+        ManualTimeProvider Time);
 
     private sealed class FakeAiProvider(
         Func<AiInteractionRequest, AiInteractionResponse> response,

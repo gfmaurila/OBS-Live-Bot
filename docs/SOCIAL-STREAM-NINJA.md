@@ -75,7 +75,7 @@ The credential used during troubleshooting was exposed. After Task09.3.1 diagnos
 
 The active API process also reported the Twitch Credential Helper unavailable (`shared_key_not_configured`). This affects official authenticated Twitch/EventSub mode only. It is not a requirement for simple SSN reading and must remain opt-in.
 
-## Response and narration remain future work
+## Response and narration boundary
 
 Future automation is:
 
@@ -85,9 +85,19 @@ LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop
              -> Piper -> Narration Service -> OBS
 ```
 
-`IChatResponseSender` and per-platform senders are conceptual boundaries only. Do not connect chat to Ollama, text sending, Piper or OBS narration until a later explicit task. Bot messages must be identifiable and ignored by the automatic decision pipeline to prevent loops.
+`IChatResponseSender` and per-platform senders are conceptual boundaries only; written replies remain unimplemented. Task10 connects eligible chat to Ollama/Piper/OBS audio only. Bot/self messages are excluded from the automatic decision pipeline to prevent loops. The controlled test completed and `AutoPlayInteractions` was returned to false.
 
 ## Task09.4 partial validation record — 2026-09-29
+
+## Task10 — YouTube live_chat hardening and real audio E2E
+
+SSN `0.4.18` watch-page/classic source did not reliably expose the YouTube live-chat DOM in the validated StudioOS headless environment. A separate source using YouTube's supported `/live_chat?is_popout=1&v=<videoId>` route captured real messages and completed the real Task10 audio path. This finding is scoped to the tested environment; it is not a claim of a universal SSN defect.
+
+For the validated live, `youtube-url-1t69en` is the active canonical source and uses `/live_chat`; the former watch source `youtube-url-ldu71d` was stopped but retained (not deleted) for reversible rollback. SSN `youtubeAutoAdd` is false to avoid watch-page auto-add competing with the canonical route. Twitch and Kick sources were not changed. No OAuth/session, safe storage or persistent SSN profile data was changed. Runtime source reconciliation uses SSN's supported source API and a deterministic per-video idempotency key; it only stops same-video duplicates when SSN exposes an exact matching video ID. Unidentifiable source records are not stopped blindly.
+
+StudioOS accepts an optional public YouTube `liveChatUrl` in the external social-stream config. Infrastructure validates HTTPS, the official YouTube host/path, the popout flag and an 11-character video ID; Domain does not know YouTube DOM or URL rules. SSN remains responsible for browser/DOM capture. The current public config points at the live used in validation; it is per-live metadata, not a credential.
+
+Automatic discovery of the authenticated channel's current live was not reliably demonstrated in SSN 0.4.18. Therefore it is **not implemented/claimed**: each new live requires supplying its public live_chat URL through the supported configuration/source-management boundary. No custom scraping is used. Real YouTube input and Task10 AI/audio E2E were proven; written platform replies remain out of scope and `AutoPlayInteractions` is false after the controlled test.
 
 The active external public configuration was backed up with Windows DPAPI CurrentUser protection and then migrated without copying the historical credential values. YouTube now uses public `channel` plus `authMode: oauth`; Twitch and Kick public channels were preserved. The loader/validator rejects forbidden credential names case-insensitively and leaves the API healthy with a sanitized failure reason. Full tests passed 258/258 and the solution built with zero errors and zero warnings.
 

@@ -4,6 +4,7 @@ using MediatR;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Contracts.Interactions;
+using ObsLiveBot.Application.Interactions;
 
 namespace ObsLiveBot.Application.Features.Interactions.Get;
 
@@ -22,6 +23,7 @@ public sealed class GetInteractionStateQueryHandler(
     IInteractionBuffer buffer,
     IInteractionCooldownTracker cooldown,
     IInteractionProviderRegistry providers,
+    IInteractionWorkQueue workQueue,
     IOptions<InteractionOptions> options)
     : IRequestHandler<GetInteractionStateQuery, Result<InteractionStateResponse>>
 {
@@ -67,7 +69,14 @@ public sealed class GetInteractionStateQueryHandler(
             state.TtsProvider,
             state.TtsStatus,
             state.TtsVoice,
-            state.TtsAudioFormat));
+            state.TtsAudioFormat,
+            options.Value.AutoPlayInteractions,
+            workQueue.Count,
+            workQueue.Capacity,
+            workQueue.RejectedCount,
+            workQueue.CurrentEventId,
+            workQueue.CurrentState,
+            workQueue.LastFailureReason));
     }
 }
 

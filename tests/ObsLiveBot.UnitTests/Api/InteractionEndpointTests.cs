@@ -29,6 +29,54 @@ public sealed class InteractionEndpointTests
     }
 
     [Fact]
+    public async Task InteractionSettings_ExposeSafeDefaultAndImmediateManualDisable()
+    {
+        await using var factory = new InteractionApiFactory("Development");
+        using var client = factory.CreateClient();
+        var initial = await client.GetFromJsonAsync<InteractionSettingsResponse>("/api/interactions/settings");
+        Assert.NotNull(initial);
+        Assert.False(initial.AutoPlayInteractions);
+        Assert.Equal("!studio", initial.TriggerCommand);
+
+        var enabled = await client.PutAsJsonAsync("/api/interactions/settings", new
+        {
+            autoPlayInteractions = true,
+            triggerCommand = "!studio",
+            globalCooldownSeconds = 10,
+            userCooldownSeconds = 30
+        });
+        Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        var active = await client.GetFromJsonAsync<InteractionSettingsResponse>("/api/interactions/settings");
+        Assert.True(active!.AutoPlayInteractions);
+
+        var disabled = await client.PutAsJsonAsync("/api/interactions/settings", new
+        {
+            autoPlayInteractions = false,
+            triggerCommand = "!studio",
+            globalCooldownSeconds = 10,
+            userCooldownSeconds = 30
+        });
+        Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
+        var final = await client.GetFromJsonAsync<InteractionSettingsResponse>("/api/interactions/settings");
+        Assert.False(final!.AutoPlayInteractions);
+    }
+
+    [Fact]
+    public async Task InteractionSettings_RejectUnsafeCooldowns()
+    {
+        await using var factory = new InteractionApiFactory("Development");
+        using var client = factory.CreateClient();
+        var response = await client.PutAsJsonAsync("/api/interactions/settings", new
+        {
+            autoPlayInteractions = false,
+            triggerCommand = "!studio",
+            globalCooldownSeconds = -1,
+            userCooldownSeconds = 0
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task DevelopmentEndpoint_RunsSamePipelineAndStoresResult()
     {
         await using var factory = new InteractionApiFactory("Development");
@@ -119,6 +167,7 @@ public sealed class InteractionEndpointTests
         Assert.Contains("/api/interactions/state", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/interactions/recent", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/interactions/providers", swagger, StringComparison.Ordinal);
+        Assert.Contains("/api/interactions/settings", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/interactions/dev/test", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/narration/state", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/narration/recent", swagger, StringComparison.Ordinal);

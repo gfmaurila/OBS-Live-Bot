@@ -1,28 +1,32 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Application.Events;
 
 namespace ObsLiveBot.Application.Interactions;
 
 public sealed class LiveChatInteractionHandler(
-    IInteractionOrchestrator orchestrator,
+    IInteractionWorkQueue queue,
+    IOptions<InteractionOptions> options,
     ILogger<LiveChatInteractionHandler> logger)
     : INotificationHandler<LiveChatEventReceivedNotification>
 {
-    public async Task Handle(LiveChatEventReceivedNotification notification, CancellationToken cancellationToken)
+    public Task Handle(LiveChatEventReceivedNotification notification, CancellationToken cancellationToken)
     {
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        var metadata = new Dictionary<string, string?>(notification.ChatEvent.Metadata, StringComparer.Ordinal)
         {
-            await orchestrator.ProcessAsync(notification.ChatEvent, null, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+            ["interaction.autoPlayAtReceipt"] = options.Value.AutoPlayInteractions ? "true" : "false"
+        };
+        var chatEvent = notification.ChatEvent with { Metadata = metadata };
+        if (!queue.TryEnqueue(chatEvent))
         {
             logger.LogWarning(
-                "INTERACTION_CHAT_EVENT_FAILED chatEventId={ChatEventId} errorType={ErrorType}",
-                notification.ChatEvent.EventId,
-                exception.GetType().Name);
+                "INTERACTION_REJECTED chatEventId={ChatEventId} reason={Reason}",
+                chatEvent.EventId,
+                "InteractionQueueFull");
         }
+        return Task.CompletedTask;
     }
 }

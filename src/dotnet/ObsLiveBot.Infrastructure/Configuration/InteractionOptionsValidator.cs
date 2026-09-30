@@ -17,6 +17,10 @@ public sealed class InteractionOptionsValidator : IValidateOptions<InteractionOp
             failures.Add("Interactions:MaxMessageCharacters must be between 1 and 100000.");
         if (options.CooldownSeconds is < 0 or > 86_400)
             failures.Add("Interactions:CooldownSeconds must be between 0 and 86400.");
+        if (options.GlobalCooldownSeconds is < 1 or > 3600)
+            failures.Add("Interactions:GlobalCooldownSeconds must be between 1 and 3600.");
+        if (options.UserCooldownSeconds is < 1 or > 86_400)
+            failures.Add("Interactions:UserCooldownSeconds must be between 1 and 86400.");
         if (options.CooldownCapacity is < 1 or > 100_000)
             failures.Add("Interactions:CooldownCapacity must be between 1 and 100000.");
         if (!Enum.IsDefined(options.DefaultResponseMode) || options.DefaultResponseMode == InteractionResponseMode.None)
@@ -77,6 +81,15 @@ public sealed class InteractionOptionsValidator : IValidateOptions<InteractionOp
             failures.Add("Interactions:Tts:QueueWaitTimeoutSeconds must be between 0 and 60.");
         if (string.IsNullOrWhiteSpace(options.ReservedCommandPrefix))
             failures.Add("Interactions:ReservedCommandPrefix is required.");
+        if (!string.IsNullOrWhiteSpace(options.ReservedCommandPrefix) &&
+            (options.ReservedCommandPrefix.Length is < 2 or > 32 ||
+             !options.ReservedCommandPrefix.StartsWith('!') ||
+             options.ReservedCommandPrefix.Any(char.IsWhiteSpace) ||
+             options.ReservedCommandPrefix.Any(char.IsControl)))
+            failures.Add("Interactions:ReservedCommandPrefix must start with !, contain no whitespace, and be 2-32 characters.");
+        if (options.BotMentionTriggers is null || options.BotMentionTriggers.Length > 16 ||
+            options.BotMentionTriggers.Any(string.IsNullOrWhiteSpace))
+            failures.Add("Interactions:BotMentionTriggers must contain at most 16 non-empty values.");
         if (string.IsNullOrWhiteSpace(options.SystemInstructions))
             failures.Add("Interactions:SystemInstructions is required.");
         if (options.SelfIdentities.Any(identity => string.IsNullOrWhiteSpace(identity) || !identity.Contains(':')))

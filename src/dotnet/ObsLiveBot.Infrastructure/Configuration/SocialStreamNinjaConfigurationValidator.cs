@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ObsLiveBot.Infrastructure.Chat;
 
 namespace ObsLiveBot.Infrastructure.Configuration;
 
@@ -23,7 +24,7 @@ public static class SocialStreamNinjaConfigurationValidator
 
     private static readonly HashSet<string> ProviderFields = new(StringComparer.OrdinalIgnoreCase)
     {
-        "enabled", "channel", "authMode"
+        "enabled", "channel", "authMode", "liveChatUrl"
     };
 
     public static void Validate(JsonElement root)
@@ -63,6 +64,10 @@ public static class SocialStreamNinjaConfigurationValidator
                 (provider.Name != "youtube" || authMode.ValueKind != JsonValueKind.String ||
                  authMode.GetString() is not ("oauth" or "url")))
                 throw new InvalidDataException("Social Stream YouTube authMode must be oauth or url.");
+            if (provider.Value.TryGetProperty("liveChatUrl", out var liveChatUrl) &&
+                (provider.Name != "youtube" || liveChatUrl.ValueKind != JsonValueKind.String ||
+                 !YouTubeLiveChatSourceLocator.TryCreate(liveChatUrl.GetString(), out _)))
+                throw new InvalidDataException("Social Stream YouTube liveChatUrl must be an official YouTube live_chat popout URL with a video ID.");
         }
     }
 

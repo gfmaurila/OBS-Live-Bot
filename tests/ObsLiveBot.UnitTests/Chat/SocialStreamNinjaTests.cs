@@ -245,6 +245,44 @@ public sealed class SocialStreamNinjaTests
     }
 
     [Fact]
+    public void OptionsValidator_AcceptsOnlyExplicitYoutubeLiveChatUrl()
+    {
+        var options = OptionsValue();
+        options.YouTube.AuthMode = "oauth";
+        options.YouTube.LiveChatUrl = "https://www.youtube.com/live_chat?is_popout=1&v=WH7l_CMYCfU";
+
+        Assert.True(new SocialStreamNinjaOptionsValidator().Validate(null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("https://www.youtube.com/watch?v=WH7l_CMYCfU")]
+    [InlineData("https://www.youtube.com/live_chat?is_popout=1&v=WH7l_CMYCfU&token=secret")]
+    public void OptionsValidator_RejectsUnsupportedYoutubeLiveChatUrl(string url)
+    {
+        var options = OptionsValue();
+        options.YouTube.LiveChatUrl = url;
+
+        Assert.True(new SocialStreamNinjaOptionsValidator().Validate(null, options).Failed);
+    }
+
+    [Fact]
+    public void ConfigurationValidatorAndLoader_MapPublicYoutubeLiveChatUrl()
+    {
+        const string liveChatUrl = "https://www.youtube.com/live_chat?is_popout=1&v=WH7l_CMYCfU";
+        var directory = CreateConfigurationDirectory(ConfigurationJson(youtube:
+            $$"""{"enabled":true,"channel":"gfmaurila","authMode":"oauth","liveChatUrl":"{{liveChatUrl}}"}"""));
+        try
+        {
+            var configuration = new ConfigurationManager();
+            var result = SocialStreamNinjaConfigurationLoader.Load(configuration, directory);
+
+            Assert.True(result.Loaded);
+            Assert.Equal(liveChatUrl, configuration["SocialStreamNinja:YouTube:LiveChatUrl"]);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
     public void OptionsValidator_RejectsUnknownYoutubeAuthMode()
     {
         var options = OptionsValue();

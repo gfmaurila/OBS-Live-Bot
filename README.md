@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-09.5` estão concluídas. A Task09.4.1 validou OAuth YouTube via SSN 0.4.18, sessão Electron `safeStorage` persistente e chats reais YouTube/Kick. A Task09.5 restaurou idempotentemente a source OBS `GFM StudioOS - Narration` (`ffmpeg_source`), validou controles e concluiu um smoke local real Piper→WAV→OBS. O backup de segurança está protegido por DPAPI CurrentUser fora do repositório. A causa histórica da ausência da source não pôde ser determinada. A senha Google permaneceu apenas na página oficial do Google; StudioOS nunca a coleta ou armazena. `AutoPlayInteractions=false`; chat continua input-only.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-09.5` estão concluídas. Task10 teve E2E real de áudio validado pelo YouTube e ouvido pelo analista: SSN `/live_chat` → SSE → interação → Ollama → Piper/WAV → fila → OBS. O autoplay foi desligado após a validação e permanece `false`; respostas escritas não estão implementadas. No ambiente headless testado, a source watch-page/classic não expôs chat confiavelmente, enquanto a rota oficial `live_chat` capturou mensagens reais; isso não é uma afirmação de falha universal do SSN. A URL de live é específica por transmissão e descoberta automática confiável não está implementada/comprovada. Task10 segue em fechamento de hardening e Git. Task09.4.1 estabeleceu OAuth YouTube via SSN 0.4.18 e `safeStorage` persistente; Google password nunca é coletada ou armazenada pelo StudioOS. Task09.5 recuperou `GFM StudioOS - Narration` (`ffmpeg_source`) e restaurou health `Ready`.
 
 ## Serviços locais
 
@@ -66,7 +66,7 @@ Integrações autenticadas continuam opcionais para envio de mensagens, moderaç
 
 Quando autorização for necessária, a experiência final deve ser `[ Connect ]` seguida do fluxo oficial. A autenticação Twitch/DPAPI permanece separada da captura simples por SSN. Consulte [docs/TWITCH.md](docs/TWITCH.md).
 
-O destino de produto é `LiveChat → InteractionDecisionPolicy → cooldown/anti-spam/anti-loop → Ollama → (IChatResponseSender para texto + Piper para áudio → OBS Narration)`. `IChatResponseSender` é uma fronteira futura para envio por plataforma; esta task não envia respostas. `AutoPlayInteractions=false`; mensagens de chat não iniciam IA ou TTS.
+O caminho de áudio implementado é `LiveChat → InteractionDecisionPolicy → cooldown/anti-spam/anti-loop → Ollama → sanitizer → Piper → OBS Narration`, habilitado somente por configuração explícita; padrão e estado final são `AutoPlayInteractions=false`. O envio de texto ao chat não está implementado. Consulte `docs/AI-INTERACTIONS.md`.
 
 ## Twitch — API oficial avançada
 

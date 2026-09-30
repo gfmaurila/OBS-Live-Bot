@@ -60,7 +60,10 @@ public sealed class SocialStreamNinjaLiveChatProvider(
         {
             try
             {
-                await EnableYouTubeAutoDiscoveryAsync(client, cancellationToken).ConfigureAwait(false);
+                await ConfigureYouTubeAutoDiscoveryAsync(
+                    client,
+                    enabled: string.IsNullOrWhiteSpace(_options.YouTube.LiveChatUrl),
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -220,6 +223,57 @@ public sealed class SocialStreamNinjaLiveChatProvider(
             try
             {
                 var sources = await GetSourcesAsync(client, cancellationToken).ConfigureAwait(false);
+                if (string.Equals(source.Target, "youtube", StringComparison.OrdinalIgnoreCase) &&
+                    YouTubeLiveChatSourceLocator.TryCreate(source.Channel, out var liveChatLocator))
+                {
+                    using var added = await SendCommandAsync(client, "addSource", new
+                    {
+                        target = "youtube",
+                        url = liveChatLocator!.Url,
+                        idempotencyKey = liveChatLocator.IdempotencyKey
+                    }, cancellationToken).ConfigureAwait(false);
+                    var canonicalId = added.RootElement.TryGetProperty("payload", out var addPayload) &&
+                                      addPayload.TryGetProperty("source", out var addedSource)
+                        ? ReadString(addedSource, "id")
+                        : null;
+                    if (string.IsNullOrWhiteSpace(canonicalId))
+                    {
+                        allReady = false;
+                        logger.LogWarning("SOCIALSTREAM_SOURCE_SETUP_FAILED platform={Platform} reason={Reason}", source.Target, "live_chat_source_not_returned");
+                        continue;
+                    }
+
+                    sources = await GetSourcesAsync(client, cancellationToken).ConfigureAwait(false);
+                    var canonical = sources.FirstOrDefault(item => string.Equals(item.Id, canonicalId, StringComparison.Ordinal));
+                    if (canonical is null)
+                    {
+                        allReady = false;
+                        logger.LogWarning("SOCIALSTREAM_SOURCE_SETUP_FAILED platform={Platform} reason={Reason}", source.Target, "live_chat_source_not_listed");
+                        continue;
+                    }
+
+                    foreach (var duplicate in sources.Where(item =>
+                                 string.Equals(item.Target, "youtube", StringComparison.OrdinalIgnoreCase) &&
+                                 !string.Equals(item.Id, canonical.Id, StringComparison.Ordinal) &&
+                                 item.Active &&
+                                 string.Equals(item.VideoId, liveChatLocator.VideoId, StringComparison.Ordinal)))
+                    {
+                        await SendCommandAsync(client, "stopSource", new { sourceId = duplicate.Id }, cancellationToken)
+                            .ConfigureAwait(false);
+                        logger.LogInformation("SOCIALSTREAM_SOURCE_STOPPED platform={Platform} reason={Reason}", "YouTube", "duplicate_live_video");
+                    }
+
+                    if (!canonical.Active)
+                        await SendCommandAsync(client, "startSource", new { sourceId = canonical.Id }, cancellationToken)
+                            .ConfigureAwait(false);
+                    logger.LogInformation(
+                        "SOCIALSTREAM_YOUTUBE_LIVE_CHAT_SOURCE_READY sourceId={SourceId} videoId={VideoId} mode={ConnectionMode}",
+                        canonical.Id,
+                        liveChatLocator.VideoId,
+                        canonical.ConnectionMode ?? "classic");
+                    continue;
+                }
+
                 var existing = sources.FirstOrDefault(item =>
                     string.Equals(item.Target, source.Target, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(item.Username, source.Channel, StringComparison.OrdinalIgnoreCase));
@@ -228,8 +282,7 @@ public sealed class SocialStreamNinjaLiveChatProvider(
                     await SendCommandAsync(client, "addSource", new
                     {
                         target = source.Target,
-                        username = source.Channel,
-                        autoActivate = false
+                        username = source.Channel
                     }, cancellationToken).ConfigureAwait(false);
                     sources = await GetSourcesAsync(client, cancellationToken).ConfigureAwait(false);
                     existing = sources.FirstOrDefault(item =>
@@ -281,9 +334,11 @@ public sealed class SocialStreamNinjaLiveChatProvider(
     {
         if (_options.Twitch.Enabled && !string.IsNullOrWhiteSpace(_options.Twitch.Channel))
             yield return ("twitch", _options.Twitch.Channel);
-        if (_options.YouTube.Enabled &&
-            !string.Equals(_options.YouTube.AuthMode, "oauth", StringComparison.OrdinalIgnoreCase) &&
-            IsYouTubeSourceLocator(_options.YouTube.Channel))
+        if (_options.YouTube.Enabled && !string.IsNullOrWhiteSpace(_options.YouTube.LiveChatUrl))
+            yield return ("youtube", _options.YouTube.LiveChatUrl);
+        else if (_options.YouTube.Enabled &&
+                 !string.Equals(_options.YouTube.AuthMode, "oauth", StringComparison.OrdinalIgnoreCase) &&
+                 IsYouTubeSourceLocator(_options.YouTube.Channel))
             yield return ("youtube", _options.YouTube.Channel!);
         if (_options.Kick.Enabled && !string.IsNullOrWhiteSpace(_options.Kick.Channel))
             yield return ("kick", _options.Kick.Channel);
@@ -302,13 +357,14 @@ public sealed class SocialStreamNinjaLiveChatProvider(
             char.IsAsciiLetterOrDigit(character) || character is '_' or '-');
     }
 
-    private static async Task EnableYouTubeAutoDiscoveryAsync(
+    private static async Task ConfigureYouTubeAutoDiscoveryAsync(
         HttpClient client,
+        bool enabled,
         CancellationToken cancellationToken)
     {
         using var document = await SendCommandAsync(client, "updateSettings", new
         {
-            settings = new { youtubeAutoAdd = true }
+            settings = new { youtubeAutoAdd = enabled }
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -333,7 +389,13 @@ public sealed class SocialStreamNinjaLiveChatProvider(
                          string.Equals(ReadString(item, "state"), "active", StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(ReadString(item, "status"), "active", StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(ReadString(item, "status"), "running", StringComparison.OrdinalIgnoreCase);
-            result.Add(new SourceInfo(id, target, username, active, ReadString(item, "connectionMode")));
+            result.Add(new SourceInfo(
+                id,
+                target,
+                username,
+                active,
+                ReadString(item, "connectionMode"),
+                ReadString(item, "videoId")));
         }
         return result;
     }
@@ -398,5 +460,11 @@ public sealed class SocialStreamNinjaLiveChatProvider(
             options.Kick.Enabled ? "Kick" : null
         }.Where(item => item is not null));
 
-    private sealed record SourceInfo(string Id, string Target, string? Username, bool Active, string? ConnectionMode);
+    private sealed record SourceInfo(
+        string Id,
+        string Target,
+        string? Username,
+        bool Active,
+        string? ConnectionMode,
+        string? VideoId);
 }

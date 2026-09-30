@@ -149,6 +149,9 @@ public static class DependencyInjection
         services.AddSingleton<IInteractionContextBuilder, InteractionContextBuilder>();
         services.AddSingleton<IAiResponseSanitizer, AiResponseSanitizer>();
         services.AddSingleton<IInteractionOrchestrator, InteractionOrchestrator>();
+        services.AddSingleton<InteractionWorkQueue>();
+        services.AddSingleton<IInteractionWorkQueue>(provider => provider.GetRequiredService<InteractionWorkQueue>());
+        services.AddHostedService<InteractionWorkQueueProcessor>();
         services.AddSingleton<IAiInteractionProvider, DevelopmentAiInteractionProvider>();
         services.AddHttpClient("Ollama", (provider, client) =>
         {

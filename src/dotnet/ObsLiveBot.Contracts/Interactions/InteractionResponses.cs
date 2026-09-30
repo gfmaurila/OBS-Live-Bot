@@ -1,5 +1,11 @@
 namespace ObsLiveBot.Contracts.Interactions;
 
+public sealed record InteractionSettingsResponse(
+    bool AutoPlayInteractions,
+    string TriggerCommand,
+    int GlobalCooldownSeconds,
+    int UserCooldownSeconds);
+
 public sealed record InteractionDecisionResponse(
     Guid DecisionId,
     Guid ChatEventId,
@@ -12,7 +18,8 @@ public sealed record InteractionDecisionResponse(
     string RequestedResponseMode,
     DateTimeOffset CreatedAtUtc,
     long Sequence,
-    string CorrelationId);
+    string CorrelationId,
+    string? ProviderMessageId = null);
 
 public sealed record InteractionResponse(
     Guid InteractionId,
@@ -61,7 +68,14 @@ public sealed record InteractionStateResponse(
     string TtsProvider,
     string TtsStatus,
     string? TtsVoice,
-    string? TtsAudioFormat);
+    string? TtsAudioFormat,
+    bool AutoPlayInteractions,
+    int WorkQueueDepth,
+    int WorkQueueCapacity,
+    long WorkQueueRejected,
+    Guid? CurrentEventId,
+    string CurrentState,
+    string? LastRejectionOrFailureReason);
 
 public sealed record InteractionProviderResponse(
     string Kind,

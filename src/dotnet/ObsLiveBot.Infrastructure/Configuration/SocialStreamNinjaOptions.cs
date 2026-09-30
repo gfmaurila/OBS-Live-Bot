@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using ObsLiveBot.Infrastructure.Chat;
 
 namespace ObsLiveBot.Infrastructure.Configuration;
 
@@ -19,6 +20,7 @@ public sealed class SocialStreamNinjaProviderSettings
     public bool Enabled { get; set; }
     public string? Channel { get; set; }
     public string? AuthMode { get; set; }
+    public string? LiveChatUrl { get; set; }
 }
 
 public sealed class SocialStreamNinjaOptionsValidator : IValidateOptions<SocialStreamNinjaOptions>
@@ -40,6 +42,9 @@ public sealed class SocialStreamNinjaOptionsValidator : IValidateOptions<SocialS
             !string.IsNullOrWhiteSpace(options.YouTube.AuthMode) &&
             options.YouTube.AuthMode is not ("oauth" or "url"))
             return ValidateOptionsResult.Fail("YouTube simple capture AuthMode must be oauth or url.");
+        if (!string.IsNullOrWhiteSpace(options.YouTube.LiveChatUrl) &&
+            !YouTubeLiveChatSourceLocator.TryCreate(options.YouTube.LiveChatUrl, out _))
+            return ValidateOptionsResult.Fail("YouTube LiveChatUrl must be an official YouTube live_chat popout URL with a video ID.");
         return ValidateOptionsResult.Success;
     }
 }

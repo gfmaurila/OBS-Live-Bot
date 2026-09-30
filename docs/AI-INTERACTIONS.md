@@ -1,8 +1,8 @@
 # AI Interaction, Ollama e TTS local
 
-## Escopo implementado (Tasks 05–08)
+## Escopo implementado (Tasks 05–10)
 
-A foundation recebe eventos normalizados, toma decisão determinística, aplica prevenção de loop/cooldown, monta contexto bounded e executa AI, sanitização, TTS opcional, notificações MediatR e buffer. A Task 08 acrescenta narração OBS isolada, com fila e playback real acionados explicitamente; autoplay de interações permanece desligado por padrão. Não há integração real de chat de plataforma, STT, memória persistente, RAG ou Content Engine.
+A foundation recebe eventos normalizados, toma decisão determinística, aplica prevenção de loop/cooldown, monta contexto bounded e executa AI, sanitização, TTS opcional, notificações MediatR e buffer. A Task 08 acrescentou narração OBS isolada; a Task10 integrou um trigger de chat real a esse pipeline de áudio. Autoplay permanece desligado por padrão e após a validação. Não há STT, memória persistente, RAG ou Content Engine.
 
 Mensagens comuns são ignoradas por padrão. `!studio` e solicitações do endpoint DEV podem responder. Identidade própria é provider-scoped. O buffer guarda até 100 resultados, oldest eviction e sequência monotônica. O publisher inicial é NoOp.
 
@@ -41,4 +41,12 @@ O endpoint de interação POST usa o mesmo command/validation/orchestrator do pi
 
 ## Estado
 
-**REAL LOCAL AI: YES. REAL LOCAL TTS: YES. REAL OBS NARRATION: YES.** `Narration:AutoPlayInteractions=false`; nenhuma transmissão pública é iniciada pelo serviço. Não existe chatbot real de Twitch/YouTube/TikTok nesta foundation.
+**REAL LOCAL AI: YES. REAL LOCAL TTS: YES. REAL OBS NARRATION: YES.** `Narration:AutoPlayInteractions=false`; nenhuma transmissão pública é iniciada pelo serviço. Task10 validou o pipeline automático de áudio em uma mensagem YouTube real; isso não representa E2E de IA/áudio em Twitch/Kick nem envio de texto às plataformas.
+
+## Task10 — áudio automático controlado
+
+Task10 conectou o evento normalizado de chat ao orquestrador existente. Uma interação elegível requer `AutoPlayInteractions=true` explicitamente e um trigger (comando configurável `!studio` ou menção reconhecida); mensagens comuns recebem `NoTrigger`. Self/bot/generated events, duplicatas, mensagens inválidas/oversized e eventos dentro dos cooldowns são rejeitados antes de executar AI/TTS. Cooldowns global e por identidade provider-scoped são conservadores; filas e concorrência de Ollama, Piper e Narration continuam bounded, com falha isolada do LiveChat. Nunca se infere identidade entre plataformas.
+
+Foi validada uma mensagem REAL do YouTube na source SSN `live_chat` até Ollama local, sanitizer, Piper/WAV e OBS; o analista confirmou ter ouvido o áudio. Não houve resposta escrita no chat. `AutoPlayInteractions` foi desligado após o teste e seu estado final é `false`. A validação real de IA/áudio descrita aqui é YouTube; não implica E2E AI/TTS em Twitch ou Kick.
+
+Semântica: `Interaction.Completed` significa que a geração da resposta (AI + TTS) concluiu com sucesso e foi publicada. A reprodução OBS é um lifecycle separado da Narration (`Queued → Started → Completed/Failed`), correlacionado, porém sem acoplamento de domínio; portanto a interação pode aparecer Completed antes do fim do áudio.

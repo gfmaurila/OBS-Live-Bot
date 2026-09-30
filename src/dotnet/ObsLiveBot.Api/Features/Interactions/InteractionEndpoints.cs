@@ -1,6 +1,7 @@
 using MediatR;
 using ObsLiveBot.Application.Features.Interactions.Get;
 using ObsLiveBot.Application.Features.Interactions.Process;
+using ObsLiveBot.Application.Features.Interactions.Settings;
 using ObsLiveBot.Contracts.Interactions;
 
 namespace ObsLiveBot.Api.Features.Interactions;
@@ -11,6 +12,23 @@ public static class InteractionEndpoints
         this IEndpointRouteBuilder endpoints,
         bool developmentMode)
     {
+        endpoints.MapGet(
+                "/api/interactions/settings",
+                async (ISender sender, CancellationToken cancellationToken) =>
+                    Results.Ok((await sender.Send(new GetInteractionSettingsQuery(), cancellationToken)).Value))
+            .WithName("GetInteractionSettings")
+            .WithTags("Interactions")
+            .Produces<InteractionSettingsResponse>();
+
+        endpoints.MapPut(
+                "/api/interactions/settings",
+                async (UpdateInteractionSettingsCommand request, ISender sender, CancellationToken cancellationToken) =>
+                    Results.Ok((await sender.Send(request, cancellationToken)).Value))
+            .WithName("UpdateInteractionSettings")
+            .WithTags("Interactions")
+            .Produces<InteractionSettingsResponse>()
+            .ProducesValidationProblem();
+
         endpoints.MapGet(
                 "/api/interactions/state",
                 async (ISender sender, CancellationToken cancellationToken) =>

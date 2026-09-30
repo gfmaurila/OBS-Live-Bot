@@ -29,13 +29,28 @@ public sealed class AutoNarrationInteractionHandler(
             result.SampleRate ?? 0,
             result.BitDepth ?? 0,
             result.Channels ?? 0);
-        var queued = await narration.EnqueueAsync(artifact, result.CorrelationId, cancellationToken)
-            .ConfigureAwait(false);
-        if (!queued.Accepted)
+        try
+        {
+            var queued = await narration.EnqueueAsync(artifact, result.CorrelationId, cancellationToken)
+                .ConfigureAwait(false);
+            if (!queued.Accepted)
+            {
+                logger.LogWarning(
+                    "NARRATION_AUTOPLAY_REJECTED narrationId={NarrationId} interactionId={InteractionId} errorCode={ErrorCode} correlationId={CorrelationId}",
+                    queued.Result.NarrationId, result.InteractionId, queued.RejectionCode, result.CorrelationId);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "INTERACTION_NARRATION_QUEUED narrationId={NarrationId} interactionId={InteractionId} correlationId={CorrelationId} queuedAt={QueuedAt}",
+                    queued.Result.NarrationId, result.InteractionId, result.CorrelationId, DateTimeOffset.UtcNow);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogWarning(
-                "NARRATION_AUTOPLAY_REJECTED narrationId={NarrationId} interactionId={InteractionId} errorCode={ErrorCode} correlationId={CorrelationId}",
-                queued.Result.NarrationId, result.InteractionId, queued.RejectionCode, result.CorrelationId);
+                "NARRATION_AUTOPLAY_FAILED interactionId={InteractionId} errorType={ErrorType} correlationId={CorrelationId}",
+                result.InteractionId, exception.GetType().Name, result.CorrelationId);
         }
     }
 }

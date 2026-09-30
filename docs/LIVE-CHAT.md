@@ -41,9 +41,9 @@ Chaves de metadata relacionadas a password, token, secret, credential ou OAuth s
 
 | Provider | Adapter | Configuração atual | Ingestão real |
 |---|---|---|---|
-| Twitch | SocialStreamNinja simple capture; official API opt-in | Captura simples independe de OAuth; API oficial exige `officialApiEnabled: true` | REAL CHAT NOT YET VALIDATED |
-| YouTube | SocialStreamNinja simple capture; official API opt-in | Captura simples independe de Google Cloud quando SSN suporta; API oficial é opt-in | REAL CHAT NOT YET VALIDATED |
-| Kick | SocialStreamNinja simple capture; official API opt-in | Captura simples não usa webhook oficial; API oficial é opt-in | REAL CHAT NOT YET VALIDATED |
+| Twitch | SocialStreamNinja simple capture; official API opt-in | Captura simples independe de OAuth; API oficial exige `officialApiEnabled: true` | REAL CHAT VALIDATED IN TASK09.3.1 |
+| YouTube | SocialStreamNinja simple capture; official API opt-in | Conta OAuth do SSN 0.4.18; senha digitada somente no Google; tokens do owner via Electron safeStorage + Secret Service/GNOME Keyring | REAL CHAT VALIDATED; restart/recreation persistence PASS |
+| Kick | SocialStreamNinja simple capture; official API opt-in | Captura simples via source WebSocket; API oficial é opt-in | REAL CHAT VALIDATED |
 | TikTok | Foundation, sem scraping/browser automation | Disabled; NotConfigured se habilitado sem integração confiável | NOT EXECUTED |
 
 Os adapters implementam contrato, estado e lifecycle comuns. Credenciais ausentes não impedem startup e resultam em `NotConfigured`; providers desabilitados resultam em `Disabled`. Adapters específicos permanecem em Infrastructure, sem SDKs vazando para Application ou Domain.
@@ -85,3 +85,5 @@ SSN runs in its own Docker/headless service. Its SSE events enter through `Socia
 `studioos.providers.json` remains intact for official authenticated actions. `officialApiEnabled` explicitly gates official integrations; omitted/false means their `enabled` and public IDs do not activate those adapters. Send-message support is a future `IChatResponseSender` boundary. Automatic AI, platform text response and chat-triggered TTS/narration are all disabled in Task09.3.
 
 Task09.3.1 validated a real Twitch message through SSN SSE, normalization, MediatR and the bounded buffer. Restart and isolated recreation of only the SSN container preserved the configured Twitch `classic` source and left the API process and buffered events intact. External-capture interactions remained ignored, with no AI, TTS or narration execution.
+
+Task09.4 was the historical checkpoint for public `authMode` parsing and case-insensitive rejection of password/token/cookie fields, including Portuguese legacy names. At that checkpoint SSN 0.4.18 could not begin OAuth because secure token storage was unavailable; no password, token, cookie or Windows browser profile was copied and real YouTube/Kick chat was not claimed. Task09.4.1 records the resolved Secret Service setup and the later real YouTube/Kick validation in [SOCIAL-STREAM-NINJA.md](SOCIAL-STREAM-NINJA.md).

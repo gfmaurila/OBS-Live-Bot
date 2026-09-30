@@ -16,7 +16,7 @@ if (Test-Path -LiteralPath $socialStreamPath) {
     $existingRaw = Get-Content -Raw -LiteralPath $socialStreamPath
     $existing = $existingRaw | ConvertFrom-Json
     if ($existing.schemaVersion -ne 1) { throw 'Existing Social Stream configuration has an unsupported schema.' }
-    $forbidden = '(?i)client.?secret|access.?token|refresh.?token|authorization.?code|password|cookies?|stream.?key|session.?id|room.?id'
+    $forbidden = '(?i)client.?secret|access.?token|refresh.?token|authorization.?code|password|senha|usuario|cookies?|session.?cookie|stream.?key|session.?id|room.?id'
     if ($existingRaw -match $forbidden) { throw 'Existing Social Stream configuration contains a protected field name.' }
     Write-Output 'SOCIALSTREAM_CONFIG=PRESERVED'
     Write-Output ('SOCIALSTREAM_CONFIG_PATH=' + $socialStreamPath)
@@ -66,7 +66,8 @@ $configuration = [ordered]@{
         }
         youtube = [ordered]@{
             enabled = ($providers.youtube.enabled -eq $true)
-            channel = [string]$providers.youtube.channelId
+            channel = [string]$providers.youtube.channel
+            authMode = 'oauth'
         }
         kick = [ordered]@{
             enabled = ($providers.kick.enabled -eq $true)

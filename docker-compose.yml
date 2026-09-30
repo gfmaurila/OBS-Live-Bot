@@ -44,6 +44,9 @@ services:
     image: gfm-studioos/socialstream-ninja:0.4.18
     container_name: gfm-studioos-socialstream
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:18080"
+      - "127.0.0.1:8181:18181"
     read_only: true
     cap_drop:
       - ALL
@@ -54,8 +57,11 @@ services:
       HOME: /var/lib/socialstream
       XDG_CACHE_HOME: /tmp/cache
       SSAPP_USER_DATA_DIR: /var/lib/socialstream
+      SSAPP_KEYRING_PASSWORD_FILE: /run/secrets/socialstream-keyring-unlock
       SSAPP_CONTROL_API: "1"
       SSAPP_CONTROL_PORT: "17777"
+    secrets:
+      - socialstream-keyring-unlock
     volumes:
       - ./data/runtime/socialstream:/var/lib/socialstream
     tmpfs:
@@ -115,3 +121,7 @@ networks:
     internal: true
   socialstream-egress:
     name: gfm-studioos-socialstream-egress
+
+secrets:
+  socialstream-keyring-unlock:
+    file: ${GFM_STUDIOOS_CONFIG_PATH:?GFM_STUDIOOS_CONFIG_PATH is required}/studioos.socialstream.keyring

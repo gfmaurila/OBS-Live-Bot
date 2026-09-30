@@ -18,6 +18,7 @@ public sealed class SocialStreamNinjaProviderSettings
 {
     public bool Enabled { get; set; }
     public string? Channel { get; set; }
+    public string? AuthMode { get; set; }
 }
 
 public sealed class SocialStreamNinjaOptionsValidator : IValidateOptions<SocialStreamNinjaOptions>
@@ -35,6 +36,10 @@ public sealed class SocialStreamNinjaOptionsValidator : IValidateOptions<SocialS
             return ValidateOptionsResult.Fail("Social Stream Ninja MaxEventBytes must be between 4096 and 1048576.");
         if (!options.Twitch.Enabled && !options.YouTube.Enabled && !options.Kick.Enabled)
             return ValidateOptionsResult.Fail("At least one Social Stream Ninja platform must be enabled.");
+        if (options.YouTube.Enabled &&
+            !string.IsNullOrWhiteSpace(options.YouTube.AuthMode) &&
+            options.YouTube.AuthMode is not ("oauth" or "url"))
+            return ValidateOptionsResult.Fail("YouTube simple capture AuthMode must be oauth or url.");
         return ValidateOptionsResult.Success;
     }
 }

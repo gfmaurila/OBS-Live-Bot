@@ -8,7 +8,7 @@ public static class SocialStreamNinjaConfigurationValidator
     {
         "accesstoken", "refreshtoken", "clientsecret", "authorizationcode", "password", "cookie", "cookies",
         "authorization", "authorizationheader", "streamkey", "bearertoken", "privatesigningkey", "session",
-        "sessionid", "roomid", "obswebsocketpassword"
+        "sessionid", "sessioncookie", "roomid", "obswebsocketpassword", "senha", "usuario"
     };
 
     private static readonly HashSet<string> RootFields = new(StringComparer.OrdinalIgnoreCase)
@@ -23,7 +23,7 @@ public static class SocialStreamNinjaConfigurationValidator
 
     private static readonly HashSet<string> ProviderFields = new(StringComparer.OrdinalIgnoreCase)
     {
-        "enabled", "channel"
+        "enabled", "channel", "authMode"
     };
 
     public static void Validate(JsonElement root)
@@ -59,6 +59,10 @@ public static class SocialStreamNinjaConfigurationValidator
             if (provider.Value.TryGetProperty("channel", out var channel) &&
                 channel.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
                 throw new InvalidDataException("Social Stream provider channel must be a string.");
+            if (provider.Value.TryGetProperty("authMode", out var authMode) &&
+                (provider.Name != "youtube" || authMode.ValueKind != JsonValueKind.String ||
+                 authMode.GetString() is not ("oauth" or "url")))
+                throw new InvalidDataException("Social Stream YouTube authMode must be oauth or url.");
         }
     }
 

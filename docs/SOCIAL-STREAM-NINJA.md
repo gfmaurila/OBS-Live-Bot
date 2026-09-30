@@ -26,7 +26,7 @@ Google Cloud / YouTube Data API is not required for simple YouTube chat if the s
 CHAT CONNECTIONS
 
 Twitch   Channel: gfmaurila   [ Connect ]   ● Connected
-YouTube  Live/Channel: detected or configured   [ Connect ]   ○ Disconnected
+YouTube  Channel: gfmaurila   [ Connect ]   ● Connected
 Kick     Channel: gfmaurila   [ Connect ]   ○ Disconnected
 
 ADVANCED
@@ -39,8 +39,8 @@ The future status contract includes provider/platform, connection mode, enabled,
 
 - Dedicated container: `gfm-studioos-socialstream`, image `gfm-studioos/socialstream-ninja:0.4.18`.
 - Headless operation uses Xvfb (`DISPLAY=:99`); SSN SSE transport is read by the StudioOS provider.
-- SSN has its own persistent `data/runtime/socialstream` volume. The API reads the external config mount as read-only. SSN is not installed inside API, n8n, Ollama, OBS or TruckHub.
-- The service has no Docker socket, OBS config mount, Windows browser profile, OBS credentials or host-published port. The image runs as UID 10001, drops Linux capabilities, uses `no-new-privileges`, a read-only root filesystem and bounded tmpfs mounts. It uses no `--privileged` mode.
+- SSN has its own persistent `data/runtime/socialstream` mount. The API reads the external config mount as read-only. SSN is not installed inside API, n8n, Ollama, OBS or TruckHub.
+- The service has no Docker socket, OBS config mount, Windows browser profile, OBS credentials or broad host credential-store mount. Only loopback callback relays on host ports 8080/8181 are published for the hosted OAuth callback. The image runs as UID 10001, drops Linux capabilities, uses `no-new-privileges`, a read-only root filesystem and bounded tmpfs mounts. It uses no `--privileged` mode.
 - API and SSN share only the internal capture network; SSN also uses a separate egress network for provider connectivity. n8n, Ollama, OBS and TruckHub do not depend on SSN availability.
 - `SSAPP_CONTROL_API` is bound to loopback in-container and relayed to the API-facing Docker network by `socat`; only the API and SSN participate in that internal network.
 
@@ -86,3 +86,38 @@ LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop
 ```
 
 `IChatResponseSender` and per-platform senders are conceptual boundaries only. Do not connect chat to Ollama, text sending, Piper or OBS narration until a later explicit task. Bot messages must be identifiable and ignored by the automatic decision pipeline to prevent loops.
+
+## Task09.4 partial validation record — 2026-09-29
+
+The active external public configuration was backed up with Windows DPAPI CurrentUser protection and then migrated without copying the historical credential values. YouTube now uses public `channel` plus `authMode: oauth`; Twitch and Kick public channels were preserved. The loader/validator rejects forbidden credential names case-insensitively and leaves the API healthy with a sanitized failure reason. Full tests passed 258/258 and the solution built with zero errors and zero warnings.
+
+SSN 0.4.18 exposed the expected account-based YouTube option and an independent URL/video-ID fallback. Selecting the account flow failed before Google authorization with `SSAPP_YOUTUBE_OWNER_SECURE_STORAGE_UNAVAILABLE`: secure token storage was not available in the Linux container. There was no existing YouTube session or selected channel, and no cookie/token content was inspected. A plaintext password-store workaround was intentionally not enabled. Consequently automatic live discovery, OAuth persistence, restart validation and real YouTube chat remain unvalidated.
+
+The existing Twitch `classic` source remained active and the Kick `gfmaurila` source remained active in observed WebSocket mode. Kick simple reading did not require a StudioOS official API or public webhook in this topology, but no real Kick event was observed during Task09.4. Provider identity and cross-provider dedupe remain covered by unit tests; they do not substitute for the required real YouTube/Kick messages. Task09.4 remains PARTIAL and no automatic AI, text, TTS or narration was enabled.
+
+Final regression checks for Task09.4 found OBS Connected and synchronized, SSN Connected/healthy, Swagger available, Ollama/Piper Ready and n8n healthy. Overall API health remained `degraded` because the narration subsystem reported `Degraded`; no narration started or completed. Task09.4 did not alter OBS configuration to repair this condition.
+
+## Task09.4.1 validation record — 2026-09-30
+
+The SSN 0.4.18 owner-account package was inspected before changing the runtime. It uses Electron `safeStorage.isEncryptionAvailable()` and encrypts owner access/refresh token values with `safeStorage.encryptString`; plaintext fallback is explicitly refused. On Linux, Electron selects `gnome_libsecret` with `--password-store=gnome-libsecret`. The backend is libsecret calling Secret Service over the SSN session D-Bus, implemented here by GNOME Keyring. The previous root cause was startup order: the entrypoint called `gnome-keyring-daemon --start` before initializing/unlocking the daemon, so the Secret Service control socket was unavailable. The corrected entrypoint initializes/unlocks first, starts the secrets component, then verifies the Secret Service owner.
+
+| Check | Observation |
+|---|---|
+| SSN version | 0.4.18; exact packaged `app.asar` inspected |
+| Safe storage | Electron `safeStorage`; Linux backend `gnome_libsecret`/libsecret/Secret Service with GNOME Keyring |
+| D-Bus / keyring / libsecret | Required: yes / yes / yes |
+| Desktop session / headless | Desktop session not required; headless works with session D-Bus plus Xvfb |
+| Plaintext storage | Disabled. Optional OAuth-token seeding into YouTube WebSocket `localStorage` is disabled in the packaged app; validated chat uses classic public live sources |
+| Persistence | `/var/lib/socialstream` maps to ignored `data/runtime/socialstream`; the keyring unlock file is an external read-only Compose secret. No runtime/keyring/session files are versioned or exposed by an API |
+| Google flow | SSN hosted authorization opened Google's official page. Analyst entered credentials and approved the channel there. No StudioOS password form, Google Cloud project or client secret was used |
+| Public channel | `gfmaurila`; channel ID `UCjy19AugQHIhyE0Nv558jcQ` |
+| Live discovery | SSN owner discovery was requested, but did not create a live source. The active public live was identified from the channel and added through SSN's supported URL source API as the allowed fallback |
+| Real YouTube chat | PASS: SSN raw `youtube` message events for the controlled text included the active video ID and native message ID; StudioOS recorded YouTube via SSE, normalized it, published through MediatR, and returned it from the chat buffer API |
+| Real Kick chat | PASS: SSN raw `kick` message event was captured and appeared as Kick in the StudioOS buffer through the same provider pipeline |
+| Identity and dedupe | Provider identity remains `Provider + ProviderUserId`. YouTube messages lacked a native author ID, so the mapper used a stable provider-scoped hash of the author name; this is reported as `identity.synthetic=true` and does not mark the source event as synthetic. The mapper reads SSN's nested `meta.messageId` for dedupe |
+| Restart and recreation | PASS: only SSN was restarted, then only SSN was recreated with its persistent bind intact. `safeStorage` owner store still identified the channel and both encrypted token records remained present; YouTube and Kick sources were reactivated without another Google login. StudioOS API was not restarted |
+| Automation | `AutoPlayInteractions=false`; YouTube/Kick interactions were ignored as `ExternalCaptureAutoResponseDisabled`; AI completions, text replies, TTS and narration starts remained zero |
+
+The public configuration contains only public provider/channel/auth-mode settings. StudioOS never receives or stores the Google password. Token, cookie and keyring contents were not printed or exposed.
+
+At the end of this validation, API health is still `degraded` solely because Narration reports `Degraded`. Its queue is empty and it has no playback or failure events. A read-only OBS WebSocket `GetInputList` check confirmed the configured source `GFM StudioOS - Narration` is absent from the current OBS inputs. The health model is behaving as designed: a missing playback source is unavailable even when idle, so this is not an idle-queue false alarm. No audio was started, and Task09.4.1 did not alter OBS inputs or narration runtime configuration. The source's absence was already reported during Task09.4 and is not a regression from this task; recreating it would modify OBS outside this task's authorized scope.

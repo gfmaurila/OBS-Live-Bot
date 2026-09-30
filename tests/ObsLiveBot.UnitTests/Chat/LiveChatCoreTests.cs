@@ -126,6 +126,23 @@ public sealed class LiveChatCoreTests
     }
 
     [Fact]
+    public async Task SameProviderEventId_FromDifferentProviders_IsNotDuplicate()
+    {
+        var pipeline = Pipeline(out _, deduplicationCapacity: 10);
+
+        var youtube = await pipeline.IngestAsync(
+            ChatEvent(provider: LiveChatProviderType.YouTube, providerEventId: "same"),
+            CancellationToken.None);
+        var kick = await pipeline.IngestAsync(
+            ChatEvent(provider: LiveChatProviderType.Kick, providerEventId: "same"),
+            CancellationToken.None);
+
+        Assert.True(youtube.Accepted);
+        Assert.True(kick.Accepted);
+        Assert.False(kick.Duplicate);
+    }
+
+    [Fact]
     public async Task SameTextFromDifferentUsers_IsNotDuplicate()
     {
         var timestamp = DateTimeOffset.UtcNow;

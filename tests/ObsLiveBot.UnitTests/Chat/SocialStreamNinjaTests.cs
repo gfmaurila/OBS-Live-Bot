@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using ObsLiveBot.Api.Configuration;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Domain.Chat;
 using ObsLiveBot.Infrastructure.Chat;
@@ -142,9 +144,29 @@ public sealed class SocialStreamNinjaTests
     }
 
     [Fact]
-    public void Mapper_AlwaysSuppressesAutomaticInteraction()
+    public void Mapper_ReadsYoutubeMessageIdFromSsnMetadataForDeduplication()
     {
-        var result = Map(Event("twitch"));
+        var result = Map("""
+            {"type":"source.event","data":{"id":13,"sourceId":"youtube-url-1","type":"message","at":"2026-09-30T00:40:13Z","data":{"type":"youtube","chatname":"@gfmaurila","chatmessage":"Teste GFM StudioOS SSN YouTube pós-restart","videoid":"EJpZkn3SHfg","meta":{"messageId":"youtube-message-13"}}}}
+            """);
+
+        Assert.Equal(LiveChatProviderType.YouTube, result.Provider);
+        Assert.Equal("youtube-message-13", result.ProviderEventId);
+        Assert.Equal("YouTube", result.User.Provider.ToString());
+        Assert.StartsWith("name:", result.User.UserId, StringComparison.Ordinal);
+        Assert.Equal("YouTube:" + result.User.UserId, result.User.Identity);
+        Assert.Equal("true", result.Metadata["identity.synthetic"]);
+        Assert.Equal("Teste GFM StudioOS SSN YouTube pós-restart", result.Message);
+        Assert.Equal("ssn-13", result.CorrelationId);
+    }
+
+    [Theory]
+    [InlineData("twitch")]
+    [InlineData("youtube")]
+    [InlineData("kick")]
+    public void Mapper_AlwaysSuppressesAutomaticInteraction(string platform)
+    {
+        var result = Map(Event(platform));
 
         Assert.Equal("true", result.Metadata["interaction.suppressed"]);
     }
@@ -172,7 +194,13 @@ public sealed class SocialStreamNinjaTests
     [Theory]
     [InlineData("clientSecret")]
     [InlineData("access_token")]
+    [InlineData("refreshToken")]
+    [InlineData("authorizationCode")]
+    [InlineData("password")]
+    [InlineData("senha")]
+    [InlineData("usuario")]
     [InlineData("cookies")]
+    [InlineData("sessionCookie")]
     [InlineData("streamKey")]
     [InlineData("session")]
     public void ConfigurationValidator_RejectsProtectedFields(string field)
@@ -189,6 +217,83 @@ public sealed class SocialStreamNinjaTests
         using var document = JsonDocument.Parse(ConfigurationJson());
 
         SocialStreamNinjaConfigurationValidator.Validate(document.RootElement);
+    }
+
+    [Fact]
+    public void ConfigurationValidator_AcceptsYoutubeOauthWithoutAccountCredentials()
+    {
+        using var document = JsonDocument.Parse(ConfigurationJson(youtube: """
+            { "enabled": true, "channel": "gfmaurila", "authMode": "oauth" }
+            """));
+
+        SocialStreamNinjaConfigurationValidator.Validate(document.RootElement);
+        var youtube = document.RootElement.GetProperty("providers").GetProperty("youtube");
+        Assert.Equal("oauth", youtube.GetProperty("authMode").GetString());
+        Assert.False(youtube.TryGetProperty("password", out _));
+        Assert.False(youtube.TryGetProperty("senha", out _));
+    }
+
+    [Theory]
+    [InlineData("oauth")]
+    [InlineData("url")]
+    public void OptionsValidator_AcceptsSupportedYoutubeAuthModes(string authMode)
+    {
+        var options = OptionsValue();
+        options.YouTube.AuthMode = authMode;
+
+        Assert.True(new SocialStreamNinjaOptionsValidator().Validate(null, options).Succeeded);
+    }
+
+    [Fact]
+    public void OptionsValidator_RejectsUnknownYoutubeAuthMode()
+    {
+        var options = OptionsValue();
+        options.YouTube.AuthMode = "password";
+
+        Assert.True(new SocialStreamNinjaOptionsValidator().Validate(null, options).Failed);
+    }
+
+    [Fact]
+    public void ConfigurationLoader_MapsOnlyPublicYoutubeOauthSettings()
+    {
+        var directory = CreateConfigurationDirectory(ConfigurationJson(youtube: """
+            { "enabled": true, "channel": "gfmaurila", "authMode": "oauth" }
+            """));
+        try
+        {
+            var configuration = new ConfigurationManager();
+            var result = SocialStreamNinjaConfigurationLoader.Load(configuration, directory);
+
+            Assert.True(result.Loaded);
+            Assert.Equal("loaded", result.Status);
+            Assert.Equal("True", configuration["SocialStreamNinja:YouTube:Enabled"]);
+            Assert.Equal("gfmaurila", configuration["SocialStreamNinja:YouTube:Channel"]);
+            Assert.Equal("oauth", configuration["SocialStreamNinja:YouTube:AuthMode"]);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData("senha")]
+    [InlineData("password")]
+    [InlineData("clientSecret")]
+    [InlineData("accessToken")]
+    [InlineData("refreshToken")]
+    [InlineData("authorizationCode")]
+    [InlineData("cookies")]
+    public void ConfigurationLoader_RejectsForbiddenYoutubeFieldWithoutThrowing(string field)
+    {
+        var directory = CreateConfigurationDirectory(ConfigurationJson(youtube:
+            $"{{ \"enabled\": true, \"authMode\": \"oauth\", \"{field}\": \"TEST_ONLY_MARKER\" }}"));
+        try
+        {
+            var result = SocialStreamNinjaConfigurationLoader.Load(new ConfigurationManager(), directory);
+
+            Assert.False(result.Loaded);
+            Assert.Equal("invalid_configuration", result.Status);
+            Assert.DoesNotContain("TEST_ONLY_MARKER", result.Status, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     private static ProviderLiveChatEvent Map(string json)
@@ -242,7 +347,7 @@ public sealed class SocialStreamNinjaTests
             }
         });
 
-    private static string ConfigurationJson(string extraRoot = "") => $$"""
+    private static string ConfigurationJson(string extraRoot = "", string youtube = "{ \"enabled\": true }") => $$"""
         {
           "schemaVersion": 1,
           "enabled": true,
@@ -254,9 +359,17 @@ public sealed class SocialStreamNinjaTests
           },
           "providers": {
             "twitch": { "enabled": true, "channel": "gfmaurila" },
-            "youtube": { "enabled": true },
+            "youtube": {{youtube}},
             "kick": { "enabled": true, "channel": "gfmaurila" }
           }{{extraRoot}}
         }
         """;
+
+    private static string CreateConfigurationDirectory(string json)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "studioos-socialstream-config-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "studioos.socialstream.json"), json);
+        return directory;
+    }
 }

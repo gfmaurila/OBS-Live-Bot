@@ -103,6 +103,10 @@ public sealed partial class SocialStreamNinjaMessageMapper(IOptions<SocialStream
         var channelName = FirstString(raw, "channel", "channelName", "channel_name") ?? channel;
         var channelId = FirstString(raw, "channelId", "channelid", "channel_id") ?? channelName;
         var providerEventId = FirstString(raw, "messageId", "message_id", "eventId", "event_id", "chatId", "chatid");
+        if (providerEventId is null && TryElement(raw, out var metadataElement, "meta"))
+        {
+            providerEventId = FirstString(metadataElement, "messageId", "message_id", "eventId", "event_id", "chatId", "chatid");
+        }
         var badges = ReadBadges(raw);
         var timestamp = ParseTimestamp(raw, captured.CapturedAtUtc, "timestamp", "createdAt", "created_at", "time");
         var metadata = BuildMetadata(raw, captured, syntheticIdentity);

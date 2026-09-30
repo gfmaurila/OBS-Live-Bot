@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-09` estão concluídas. A Task09.3.1 validou captura Twitch real via SSN, persistência após restart/recriação isolada e recuperação sem reiniciar a API. A integração oficial Twitch permanece um modo avançado opcional e não foi autenticada. Narração local pelo OBS foi validada; `AutoPlayInteractions=false`.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-09` estão concluídas. A Task09.4.1 validou OAuth do YouTube pelo SSN 0.4.18, armazenamento Electron `safeStorage` via Secret Service/GNOME Keyring, persistência após restart e recriação isolada, e chat real YouTube/Kick pelo SSE e buffer do StudioOS. A senha Google foi digitada somente na página oficial do Google; StudioOS nunca a coleta ou armazena. O health geral permanece `degraded` porque o input de narração configurado não existe nas sources OBS atuais; essa causa foi confirmada por consulta somente leitura e não foi introduzida por esta task. `AutoPlayInteractions=false`.
 
 ## Serviços locais
 
@@ -54,7 +54,9 @@ Use a senha local provisionada no ambiente; credenciais não são documentadas n
 
 O padrão do StudioOS é captura simples pelo container dedicado Social Stream Ninja (SSN). Configure somente o canal ou live que o mecanismo suporta; a API recebe o transporte SSE, normaliza os eventos e os publica pelo MediatR no `LiveChatBuffer`. A configuração reside em `studioos.socialstream.json`, fora do Git e montada read-only em `/app/config`.
 
-Captura simples não usa os Client IDs do arquivo `studioos.providers.json`, OAuth do StudioOS, cookies copiados, credenciais do navegador nem webhooks públicos. Google Cloud/YouTube Data API não é pré-requisito para ler chat do YouTube quando o SSN consegue capturá-lo sem isso. Da mesma forma, consoles de desenvolvedor Twitch/Kick não são pré-requisito para captura simples quando o SSN suporta o canal ou URL informado.
+Captura simples não usa os Client IDs do arquivo `studioos.providers.json`, OAuth do StudioOS, cookies copiados, credenciais do navegador nem webhooks públicos. Para YouTube, o usuário escolhe Connect no SSN, autentica diretamente na página oficial do Google e autoriza o canal; SSN armazena a sessão cifrada com Electron `safeStorage` usando Secret Service/GNOME Keyring. StudioOS nunca coleta ou armazena a senha Google. Google Cloud/YouTube Data API não é pré-requisito para esse fluxo. Da mesma forma, consoles de desenvolvedor Twitch/Kick não são pré-requisito para captura simples quando o SSN suporta o canal ou URL informado.
+
+O arquivo público `studioos.socialstream.json` aceita somente dados não secretos. O YouTube pode declarar `authMode: "oauth"`; campos como `usuario`, `senha`, `password`, Client Secret, tokens, authorization code e cookies são rejeitados de forma controlada, com motivo sanitizado e sem derrubar a API.
 
 O SSN dedicado usa Docker/headless com Xvfb quando necessário, volume próprio em `data/runtime/socialstream`, sem acesso ao socket Docker, perfil/cookies do navegador, OBS config ou credenciais OBS. Consulte [docs/SOCIAL-STREAM-NINJA.md](docs/SOCIAL-STREAM-NINJA.md) para estado validado e limitações de teste real.
 

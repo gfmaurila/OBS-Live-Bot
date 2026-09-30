@@ -71,7 +71,9 @@ SSN is an Infrastructure adapter, not a domain dependency. Domain/Application co
 
 Official platform APIs are an optional advanced mode. The existing public `studioos.providers.json` entries remain available; `officialApiEnabled` must be explicitly true before an official adapter starts. Missing/false means simple mode remains independent of developer app setup. Sending future text uses an `IChatResponseSender` boundary with per-platform implementations; it is not implemented here.
 
-Future product flow: `LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop -> Ollama -> (IChatResponseSender + Piper -> OBS Narration)`. Preserve identity as `Provider + ProviderUserId`; mark bot messages and exclude them from future prompts. Task09.3 only validates input and keeps `AutoPlayInteractions=false`.
+Future product flow: `LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop -> Ollama -> (IChatResponseSender + Piper -> OBS Narration)`. Preserve identity as `Provider + ProviderUserId`; mark bot messages and exclude them from future prompts. Tasks09.3/09.4 validate input only and keep `AutoPlayInteractions=false`. SSN YouTube owner OAuth stays inside the isolated SSN container; Electron safeStorage/Secret Service protects owner tokens, while StudioOS receives normalized chat and public channel metadata. Google passwords never enter StudioOS.
+
+For YouTube simple mode, `authMode=oauth` means SSN owns the provider-controlled browser authorization and encrypted owner-token storage; StudioOS stores only public metadata. SSN 0.4.18 provides owner live discovery, but this run's discovery did not add a source; the active public video URL was added through SSN's supported source API. Linux secure storage uses Electron safeStorage backed by libsecret/Secret Service and GNOME Keyring. This keeps Google credentials out of StudioOS and leaves YouTube authorization failures isolated from Twitch and Kick.
 
 The future Command Center presents each provider, public channel/live URL, `[ Connect ]`, state, last-connect/message times and a sanitized error. Official APIs appear under Advanced as a separate opt-in.
 

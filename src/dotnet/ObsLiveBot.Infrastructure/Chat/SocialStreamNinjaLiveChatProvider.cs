@@ -55,6 +55,24 @@ public sealed class SocialStreamNinjaLiveChatProvider(
         UpdateSnapshot(state: LiveChatProviderState.Connecting, processRunning: true, transportReady: false);
         logger.LogInformation("SOCIALSTREAM_PROCESS_READY");
 
+        if (_options.YouTube.Enabled &&
+            string.Equals(_options.YouTube.AuthMode, "oauth", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await EnableYouTubeAutoDiscoveryAsync(client, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    "SOCIALSTREAM_YOUTUBE_AUTO_DISCOVERY_UNAVAILABLE errorType={ErrorType}",
+                    exception.GetType().Name);
+            }
+        }
         var captureReady = !_options.ConfigureSources || await EnsureSourcesAsync(client, cancellationToken).ConfigureAwait(false);
         using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/events");
         var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
@@ -263,14 +281,36 @@ public sealed class SocialStreamNinjaLiveChatProvider(
     {
         if (_options.Twitch.Enabled && !string.IsNullOrWhiteSpace(_options.Twitch.Channel))
             yield return ("twitch", _options.Twitch.Channel);
-        if (_options.YouTube.Enabled && !string.IsNullOrWhiteSpace(_options.YouTube.Channel))
-            yield return ("youtube", _options.YouTube.Channel);
+        if (_options.YouTube.Enabled &&
+            !string.Equals(_options.YouTube.AuthMode, "oauth", StringComparison.OrdinalIgnoreCase) &&
+            IsYouTubeSourceLocator(_options.YouTube.Channel))
+            yield return ("youtube", _options.YouTube.Channel!);
         if (_options.Kick.Enabled && !string.IsNullOrWhiteSpace(_options.Kick.Channel))
             yield return ("kick", _options.Kick.Channel);
     }
 
     private static string? PreferredSimpleConnectionMode(string target) =>
         string.Equals(target, "twitch", StringComparison.OrdinalIgnoreCase) ? "classic" : null;
+
+    private static bool IsYouTubeSourceLocator(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+            return uri.Host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                   uri.Host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase);
+        return value.Length == 11 && value.All(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '_' or '-');
+    }
+
+    private static async Task EnableYouTubeAutoDiscoveryAsync(
+        HttpClient client,
+        CancellationToken cancellationToken)
+    {
+        using var document = await SendCommandAsync(client, "updateSettings", new
+        {
+            settings = new { youtubeAutoAdd = true }
+        }, cancellationToken).ConfigureAwait(false);
+    }
 
     private static async Task<IReadOnlyList<SourceInfo>> GetSourcesAsync(
         HttpClient client,

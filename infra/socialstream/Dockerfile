@@ -26,6 +26,7 @@ LABEL org.opencontainers.image.title="GFM StudioOS Social Stream Ninja" \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       ca-certificates curl fonts-noto-core fonts-noto-color-emoji \
+      dbus gnome-keyring libsecret-1-0 \
       libasound2 libatk-bridge2.0-0 libatspi2.0-0 libcups2 libdrm2 libgbm1 \
       libgtk-3-0 libnss3 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 \
       libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 libxss1 \
@@ -38,13 +39,18 @@ RUN apt-get update \
 
 COPY --from=fetch /opt/socialstream/squashfs-root /opt/socialstream/app
 COPY infra/socialstream/entrypoint.sh /usr/local/bin/socialstream-entrypoint
+COPY infra/socialstream/open-external.sh /usr/local/bin/xdg-open
 
-RUN chmod -R a+rX /opt/socialstream/app \
-    && chmod 0755 /usr/local/bin/socialstream-entrypoint \
+RUN perl -0777 -i -pe \
+      'BEGIN { $from = "tokenStoreUrl: tokenStorePage?.url || \x27\x27"; $to = "tokenStoreUrl: \x27\x27"; $to .= q{ } x (length($from) - length($to)); } $count += s/\Q$from\E/$to/g; END { die "Unexpected SSN YouTube token-store patch count: $count\n" unless $count == 1; }' \
+      /opt/socialstream/app/resources/app.asar \
+    && chmod -R a+rX /opt/socialstream/app \
+    && chmod 0755 /usr/local/bin/socialstream-entrypoint /usr/local/bin/xdg-open \
     && if [ -f /opt/socialstream/app/chrome-sandbox ]; then chmod 4755 /opt/socialstream/app/chrome-sandbox; fi
 
 ENV DISPLAY=:99 \
     SSAPP_USER_DATA_DIR=/var/lib/socialstream \
+    SSAPP_KEYRING_PASSWORD_FILE=/run/secrets/socialstream-keyring-unlock \
     SSAPP_CONTROL_API=1 \
     SSAPP_CONTROL_PORT=17777
 

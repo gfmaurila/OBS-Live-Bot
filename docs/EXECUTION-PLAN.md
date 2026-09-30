@@ -15,6 +15,7 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 | OBS-LIVE-BOT-08 | OBS Narration & Audio Routing | **PASS — source dedicada, fila FIFO bounded, playback OBS real, routing Track 1/MonitorOff, APIs, regressão e finalização Git verificados** |
 | OBS-LIVE-BOT-09 | Twitch Real Chat Integration | **PASS — captura Twitch real via SSN SimpleCapture, pipeline normalizado, isolamento e recuperação validados; official API permanece opt-in e não autenticada** |
 | OBS-LIVE-BOT-09.3.1 | Social Stream Ninja Docker + Simple Chat Connection + LiveChat Integration | **PASS — source Twitch `classic` ativa, mensagem real via SSE, persistência após restart/recriação, API preservada, OBS auth sincronizada, 237 testes, build e secret scan** |
+| OBS-LIVE-BOT-09.4.1 | YouTube Account OAuth + Secure Session + Real Chat Validation | **PASS — OAuth/SSN safeStorage persistente; YouTube e Kick reais via SSE/LiveChatBuffer; restart/recriação SSN preservou sessão; 259 testes/build/secret scan PASS. Narration Degraded explicado: input OBS ausente, condição anterior e fora do escopo desta task** |
 | OBS-LIVE-BOT-10 | YouTube Real Chat Integration | planejada; não iniciada |
 
 ## Trilhas posteriores já incorporadas à arquitetura

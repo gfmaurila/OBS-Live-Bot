@@ -21,6 +21,8 @@ Qualquer allowlist de secret scan deve corresponder somente a esse valor exato n
 ## Backups OBS
 O requisito funcional é preservar integralmente o ambiente OBS do usuário, inclusive credenciais que estejam armazenadas dentro de `OBS_CONFIG_ROOT` e sejam copiáveis. Portanto, backups podem conter segredos e devem ser tratados como artefatos sensíveis: criptografia/proteção, acesso restrito, integridade e exclusão do Git.
 
+Task09.5 criou um pacote de segurança específico da coleção/profile ETS usando DPAPI CurrentUser, ACL apenas para o usuário atual, manifest SHA-256 e instruções de rollback. O `.dpapi` está em `D:\OBS-Live\.config\backups\obs-narration\` e nunca deve ser adicionado ao repositório. A restauração é feita somente com OBS fechado e após validar os checksums.
+
 ## Incidente do histórico n8n
 
 O segredo do n8n anteriormente presente em `data/n8n/config` foi tratado como comprometido, rotacionado e removido do histórico Git. O histórico local e as refs ativas do remote foram reescritos em 2026-09-28. O estado de runtime `data/n8n/` e o `.env` permanecem locais e ignorados pelo Git.

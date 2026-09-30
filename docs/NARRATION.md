@@ -45,7 +45,7 @@ Playback, validation, path mapping, OBS disconnect, full queue, duration, and ti
 - `PUT /api/narration/volume` — JSON `{ "volume": 70 }`; safe range 0–100.
 - `POST /api/narration/dev/test` — Development environment only. JSON `{ "text": "Teste de narração do GFM StudioOS." }`; calls the selected real Piper provider and then enqueues the artifact. It never accepts a path and uses the production application queue/playback path.
 
-Health exposes a separate `narration` status. A missing source, disconnected OBS, or routing mismatch degrades Narration without making OBS Chat/Ollama/Piper/n8n themselves fail. Startup never creates a source or plays historical interaction-buffer content. If an owned source already exists, the worker stops/clears stale media without replay.
+Health exposes a separate `narration` status. A missing source, disconnected OBS, or routing mismatch degrades Narration without making OBS Chat/Ollama/Piper/n8n themselves fail. Normal startup never creates a source or plays historical interaction-buffer content. Explicit narration playback calls the idempotent `EnsureSourceAsync`: it reuses a correctly typed source, creates the owned source only when absent, repairs missing scene attachments, and fails with `NARRATION_SOURCE_NAME_COLLISION` for an incompatible same-name input. If an owned source already exists, the worker stops/clears stale media without replay.
 
 ## Validation record
 
@@ -60,3 +60,13 @@ The controlled real smoke test used Piper and OBS Media Source while streaming a
 - Future: automatic chat-to-voice remains disabled until `Narration:AutoPlayInteractions=true` is deliberately approved/configured. UI, n8n publisher, per-platform mixing, local monitor playback, and public live automation are not implemented by this document.
 
 The Piper voice `pt_BR-faber-medium` redistribution status remains `UNKNOWN`; this task does not change its licensing determination. See [TTS.md](TTS.md).
+
+## Task09.5 recovery record — 2026-09-29 (local)
+
+OBS 32.1.2 / WebSocket 5.7.3 was connected to scene collection/profile `ETS`, program scene `Iniciando`; streaming and recording were stopped before recovery. Current config and its `.bak` had no narration source references, while historical OBS logs and Task08 documentation show that the source had existed previously. No deletion or collection-replacement event was recorded, so the root cause is **UNKNOWN**.
+
+Before changing OBS, a timestamped safety package was written outside the repository at `D:\OBS-Live\.config\backups\obs-narration\obs-narration-20260929-222826.dpapi`. It contains `global.ini`, `basic/profiles/ETS/basic.ini` and `basic/scenes/ETS.json`, a UTC manifest with per-file SHA-256/length, and rollback instructions. The ZIP payload is protected with Windows DPAPI CurrentUser, the directory ACL is restricted to the current Windows user, and the backup was decrypted to a temporary validation area and all three hashes verified. Rollback requires OBS closed and restoration only of the listed files. The backup is not in Git.
+
+The one controlled Development smoke invoked the existing `EnsureSourceAsync` through the narration test endpoint. OBS now has exactly one `GFM StudioOS - Narration` input of kind `ffmpeg_source`, attached once to each of the six existing `ETS` scenes (`Iniciando`, `Jogando - ETS`, `Já Volto`, `Finalizando`, `Jogando - ATS`, `Jogo`). No scenes or unrelated sources were recreated or modified. Routing is Track 1 only and `MonitorOff`. Mute→unmute and volume 35%→70% were validated through source-local APIs; the final source is unmuted at 70%.
+
+Piper (`pt_BR-faber-medium`) produced a real 2.59-second WAV for “Teste de narração do GFM StudioOS.” The one narration moved through `Queued → Preparing → Started → Completed` (OBS Media Source reported playback start and end). Narration health is `Ready`; the API recent buffer has one completed manual test with no failures. No public stream or recording was started. `AutoPlayInteractions=false`; prior chat events remain input-only and produced zero automatic AI, TTS or narration. Task09.4.1 remains PASS and its Twitch/YouTube/Kick validation and secure YouTube session were preserved.

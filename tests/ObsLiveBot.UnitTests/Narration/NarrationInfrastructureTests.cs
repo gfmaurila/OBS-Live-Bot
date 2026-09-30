@@ -76,6 +76,12 @@ public sealed class NarrationInfrastructureTests
     }
 
     [Fact]
+    public void NarrationOptions_AutomaticChatPlaybackDefaultsOff()
+    {
+        Assert.False(new NarrationOptions().AutoPlayInteractions);
+    }
+
+    [Fact]
     public void NarrationOptions_RejectConcurrentPlaybackAboveOne()
     {
         var interactionOptions = Options.Create(new InteractionOptions());
@@ -126,6 +132,96 @@ public sealed class NarrationInfrastructureTests
         {
             Directory.Delete(runtimeDirectory, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task EnsureSource_CreatesMissingNarrationSourceOnceAndAttachesExistingScenes()
+    {
+        var obs = new StatefulObsRequestClient();
+        var service = CreatePlaybackService(obs);
+
+        await service.EnsureSourceAsync("GFM StudioOS - Narration", "C:/runtime/tts", CancellationToken.None);
+        await service.EnsureSourceAsync("GFM StudioOS - Narration", "C:/runtime/tts", CancellationToken.None);
+
+        Assert.Equal("ffmpeg_source", Assert.Single(obs.Inputs, input => input.Key == "GFM StudioOS - Narration").Value);
+        Assert.Equal(1, obs.Requests.Count(request => request.Type == "CreateInput"));
+        Assert.Equal(1, obs.Requests.Count(request => request.Type == "CreateSceneItem"));
+        Assert.All(obs.Scenes, scene => Assert.Contains("GFM StudioOS - Narration", obs.SceneItems[scene]));
+        Assert.Equal(2, obs.Requests.Count(request => request.Type == "SetInputAudioTracks"));
+
+        var state = await service.GetStateAsync("GFM StudioOS - Narration", CancellationToken.None);
+        Assert.True(state.Available);
+        Assert.Equal("Ready", state.Status);
+        Assert.Equal([1], state.Tracks);
+        Assert.Equal("MonitorOff", state.MonitoringMode);
+    }
+
+    [Fact]
+    public async Task EnsureSource_ReusesValidSourceAndRepairsOnlyMissingSceneAttachment()
+    {
+        var obs = new StatefulObsRequestClient(
+            inputs: new Dictionary<string, string>
+            {
+                ["GFM StudioOS - Narration"] = "ffmpeg_source",
+                ["Unrelated Capture"] = "wasapi_input_capture"
+            },
+            sceneItems: new Dictionary<string, HashSet<string>>
+            {
+                ["Iniciando"] = ["GFM StudioOS - Narration", "Unrelated Capture"],
+                ["Gameplay"] = ["Unrelated Capture"]
+            });
+        var service = CreatePlaybackService(obs);
+
+        await service.EnsureSourceAsync("GFM StudioOS - Narration", "C:/runtime/tts", CancellationToken.None);
+
+        Assert.DoesNotContain(obs.Requests, request => request.Type == "CreateInput");
+        Assert.Single(obs.Requests, request => request.Type == "CreateSceneItem" &&
+            request.Data.GetProperty("sceneName").GetString() == "Gameplay");
+        Assert.Contains("Unrelated Capture", obs.SceneItems["Iniciando"]);
+        Assert.Contains("Unrelated Capture", obs.SceneItems["Gameplay"]);
+        Assert.Equal(2, obs.Inputs.Count);
+        Assert.True((await service.GetStateAsync("GFM StudioOS - Narration", CancellationToken.None)).Available);
+    }
+
+    [Fact]
+    public async Task EnsureSource_FailsClosedOnIncompatibleSameNameWithoutChangingOtherSources()
+    {
+        var obs = new StatefulObsRequestClient(
+            inputs: new Dictionary<string, string>
+            {
+                ["GFM StudioOS - Narration"] = "wasapi_input_capture",
+                ["Unrelated Capture"] = "wasapi_input_capture"
+            });
+        var service = CreatePlaybackService(obs);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.EnsureSourceAsync("GFM StudioOS - Narration", "C:/runtime/tts", CancellationToken.None));
+
+        Assert.Equal("NARRATION_SOURCE_NAME_COLLISION", exception.Message);
+        Assert.Equal(2, obs.Inputs.Count);
+        Assert.Equal("wasapi_input_capture", obs.Inputs["Unrelated Capture"]);
+        Assert.DoesNotContain(obs.Requests, request => request.Type is "CreateInput" or "CreateSceneItem" or "SetInputAudioTracks");
+    }
+
+    [Fact]
+    public async Task ConfigureNarration_ChangesOnlyNamedSourceMuteAndVolume()
+    {
+        var obs = new StatefulObsRequestClient(
+            inputs: new Dictionary<string, string>
+            {
+                ["GFM StudioOS - Narration"] = "ffmpeg_source",
+                ["Unrelated Capture"] = "wasapi_input_capture"
+            });
+        var service = CreatePlaybackService(obs);
+
+        await service.ConfigureAsync("GFM StudioOS - Narration", 35, true, CancellationToken.None);
+
+        Assert.Equal(0.35, obs.InputVolumes["GFM StudioOS - Narration"]);
+        Assert.True(obs.InputMutes["GFM StudioOS - Narration"]);
+        Assert.False(obs.InputMutes["Unrelated Capture"]);
+        Assert.All(obs.Requests.Where(request => request.Type is "SetInputVolume" or "SetInputMute" or
+            "SetInputAudioTracks" or "SetInputAudioMonitorType"), request =>
+            Assert.Equal("GFM StudioOS - Narration", request.Data.GetProperty("inputName").GetString()));
     }
 
     [Fact]
@@ -262,6 +358,91 @@ public sealed class NarrationInfrastructureTests
             return Task.FromResult(JsonDocument.Parse(response).RootElement.Clone());
         }
     }
+
+    private sealed class StatefulObsRequestClient : IObsRequestClient
+    {
+        public bool IsConnected => true;
+        public string[] Scenes { get; } = ["Iniciando", "Gameplay"];
+        public Dictionary<string, string> Inputs { get; }
+        public Dictionary<string, HashSet<string>> SceneItems { get; }
+        public Dictionary<string, double> InputVolumes { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, bool> InputMutes { get; } = new(StringComparer.Ordinal);
+        public List<(string Type, JsonElement Data)> Requests { get; } = [];
+
+        public StatefulObsRequestClient(
+            Dictionary<string, string>? inputs = null,
+            Dictionary<string, HashSet<string>>? sceneItems = null)
+        {
+            Inputs = inputs ?? new Dictionary<string, string>(StringComparer.Ordinal);
+            SceneItems = sceneItems ?? Scenes.ToDictionary(scene => scene,
+                _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
+            foreach (var name in Inputs.Keys)
+            {
+                InputVolumes[name] = 0.70;
+                InputMutes[name] = false;
+            }
+        }
+
+        public Task<JsonElement> SendRequestAsync(string requestType, object requestData, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var data = JsonSerializer.SerializeToElement(requestData);
+            Requests.Add((requestType, data));
+            switch (requestType)
+            {
+                case "GetSceneList":
+                    return Result(new { scenes = Scenes.Select(scene => new { sceneName = scene }) });
+                case "GetInputList":
+                    return Result(new { inputs = Inputs.Select(input => new { inputName = input.Key, inputKind = input.Value }) });
+                case "GetInputKindList":
+                    return Result(new { inputKinds = new[] { "ffmpeg_source" } });
+                case "GetSceneItemList":
+                {
+                    var scene = data.GetProperty("sceneName").GetString()!;
+                    return Result(new { sceneItems = SceneItems[scene].Select(sourceName => new { sourceName }) });
+                }
+                case "CreateInput":
+                {
+                    var name = data.GetProperty("inputName").GetString()!;
+                    var scene = data.GetProperty("sceneName").GetString()!;
+                    var kind = data.GetProperty("inputKind").GetString()!;
+                    Inputs.Add(name, kind);
+                    InputVolumes[name] = 0.70;
+                    InputMutes[name] = false;
+                    SceneItems[scene].Add(name);
+                    return Result(new { inputUuid = Guid.NewGuid().ToString("D") });
+                }
+                case "CreateSceneItem":
+                    SceneItems[data.GetProperty("sceneName").GetString()!].Add(data.GetProperty("sourceName").GetString()!);
+                    return Result(new { sceneItemId = 1 });
+                case "SetInputVolume":
+                    InputVolumes[data.GetProperty("inputName").GetString()!] = data.GetProperty("inputVolumeMul").GetDouble();
+                    break;
+                case "SetInputMute":
+                    InputMutes[data.GetProperty("inputName").GetString()!] = data.GetProperty("inputMuted").GetBoolean();
+                    break;
+                case "GetInputVolume":
+                    return Result(new { inputVolumeMul = InputVolumes[data.GetProperty("inputName").GetString()!] });
+                case "GetInputMute":
+                    return Result(new { inputMuted = InputMutes[data.GetProperty("inputName").GetString()!] });
+                case "GetInputAudioMonitorType":
+                    return Result(new { monitorType = "OBS_MONITORING_TYPE_NONE" });
+                case "GetInputAudioTracks":
+                    return Result(new { inputAudioTracks = new Dictionary<string, bool> { ["1"] = true } });
+                case "GetMediaInputStatus":
+                    return Result(new { mediaState = "OBS_MEDIA_STATE_NONE" });
+                default:
+                    break;
+            }
+            return Result(new { });
+        }
+
+        private static Task<JsonElement> Result<T>(T value) =>
+            Task.FromResult(JsonSerializer.SerializeToElement(value));
+    }
+
+    private static ObsAudioPlaybackService CreatePlaybackService(IObsRequestClient obs) =>
+        new(obs, Options.Create(new NarrationOptions()), Options.Create(new InteractionOptions()), TimeProvider.System);
 
     private static ServiceProvider CreateMediatorProvider()
     {

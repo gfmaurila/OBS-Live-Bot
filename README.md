@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-09` estão concluídas. A Task09.4.1 validou OAuth do YouTube pelo SSN 0.4.18, armazenamento Electron `safeStorage` via Secret Service/GNOME Keyring, persistência após restart e recriação isolada, e chat real YouTube/Kick pelo SSE e buffer do StudioOS. A senha Google foi digitada somente na página oficial do Google; StudioOS nunca a coleta ou armazena. O health geral permanece `degraded` porque o input de narração configurado não existe nas sources OBS atuais; essa causa foi confirmada por consulta somente leitura e não foi introduzida por esta task. `AutoPlayInteractions=false`.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-09.5` estão concluídas. A Task09.4.1 validou OAuth YouTube via SSN 0.4.18, sessão Electron `safeStorage` persistente e chats reais YouTube/Kick. A Task09.5 restaurou idempotentemente a source OBS `GFM StudioOS - Narration` (`ffmpeg_source`), validou controles e concluiu um smoke local real Piper→WAV→OBS. O backup de segurança está protegido por DPAPI CurrentUser fora do repositório. A causa histórica da ausência da source não pôde ser determinada. A senha Google permaneceu apenas na página oficial do Google; StudioOS nunca a coleta ou armazena. `AutoPlayInteractions=false`; chat continua input-only.
 
 ## Serviços locais
 

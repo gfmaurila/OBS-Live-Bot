@@ -16,7 +16,8 @@ Cada task é executada e validada isoladamente. Documentar módulos futuros não
 | OBS-LIVE-BOT-09 | Twitch Real Chat Integration | **PASS — captura Twitch real via SSN SimpleCapture, pipeline normalizado, isolamento e recuperação validados; official API permanece opt-in e não autenticada** |
 | OBS-LIVE-BOT-09.3.1 | Social Stream Ninja Docker + Simple Chat Connection + LiveChat Integration | **PASS — source Twitch `classic` ativa, mensagem real via SSE, persistência após restart/recriação, API preservada, OBS auth sincronizada, 237 testes, build e secret scan** |
 | OBS-LIVE-BOT-09.4.1 | YouTube Account OAuth + Secure Session + Real Chat Validation | **PASS — OAuth/SSN safeStorage persistente; YouTube e Kick reais via SSE/LiveChatBuffer; restart/recriação SSN preservou sessão; 259 testes/build/secret scan PASS. Narration Degraded explicado: input OBS ausente, condição anterior e fora do escopo desta task** |
-| OBS-LIVE-BOT-10 | YouTube Real Chat Integration | planejada; não iniciada |
+| OBS-LIVE-BOT-09.5 | OBS Narration Source Recovery & Audio Baseline Closure | **PASS — backup protegido DPAPI CurrentUser + manifest/rollback; `ffmpeg_source` recuperada idempotentemente e anexada às seis cenas ETS; Track 1/MonitorOff, mute/volume validados; smoke real Piper→OBS Completed; narration Ready; 264 testes e build limpo** |
+| OBS-LIVE-BOT-10 | Automatic Live Chat AI Audio Interaction | planejada; não iniciada; `AutoPlayInteractions=false` |
 
 ## Trilhas posteriores já incorporadas à arquitetura
 - **Módulo 04 — Content Engine:** transcrição, análise, cortes, áudio contextual e conteúdo multiplataforma.

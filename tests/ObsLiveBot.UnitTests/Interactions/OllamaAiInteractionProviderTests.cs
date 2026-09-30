@@ -184,6 +184,17 @@ public sealed class OllamaAiInteractionProviderTests
     }
 
     [Fact]
+    public void ConfigurationValidation_AcceptsDockerNetworkOllamaEndpoint()
+    {
+        var options = Options();
+        options.Ollama.BaseUrl = "http://ollama:11434";
+
+        var result = new InteractionOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
     public async Task Registry_ExposesDevelopmentAndSelectedOllamaState()
     {
         var options = Microsoft.Extensions.Options.Options.Create(Options());

@@ -49,4 +49,12 @@ Task10 conectou o evento normalizado de chat ao orquestrador existente. Uma inte
 
 Foi validada uma mensagem REAL do YouTube na source SSN `live_chat` até Ollama local, sanitizer, Piper/WAV e OBS; o analista confirmou ter ouvido o áudio. Não houve resposta escrita no chat. `AutoPlayInteractions` foi desligado após o teste e seu estado final é `false`. A validação real de IA/áudio descrita aqui é YouTube; não implica E2E AI/TTS em Twitch ou Kick.
 
+## Task10.1 — Ollama gerenciado por Docker
+
+O runtime oficial do provider local agora é `gfm-studioos-ollama`, acessado pela API em `http://ollama:11434`. O modelo permanece fora da imagem e do Git no volume `gfm-studioos-ollama-models`; o serviço one-shot `gfm-studioos-ollama-model` provisiona somente quando ausente. A API não depende da prontidão do Ollama para iniciar: indisponibilidade degrada Interactions sem derrubar Chat, OBS ou os demais endpoints.
+
+A validação com o Ollama do Windows parado comprovou inferência real via API, sem fallback, e uso `100% GPU` reportado pelo Ollama na RTX 3060. Restart/recriação preservaram o modelo e o segundo provisionamento não baixou novamente. O Compose base mantém fallback CPU; o override `docker-compose.gpu.yml` solicita GPU NVIDIA. Detalhes em [LOCAL-AI-RUNTIME.md](LOCAL-AI-RUNTIME.md).
+
+O E2E de live da Task10 continua sendo a baseline histórica. A repetição YouTube → SSN → Ollama Docker → Piper → OBS está pendente de uma live criada intencionalmente pelo analista; não foi simulada nem declarada como concluída nesta validação de infraestrutura.
+
 Semântica: `Interaction.Completed` significa que a geração da resposta (AI + TTS) concluiu com sucesso e foi publicada. A reprodução OBS é um lifecycle separado da Narration (`Queued → Started → Completed/Failed`), correlacionado, porém sem acoplamento de domínio; portanto a interação pode aparecer Completed antes do fim do áudio.

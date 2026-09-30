@@ -22,7 +22,7 @@ services:
       CredentialHelper__SharedKey: ${GFM_STUDIOOS_CREDENTIAL_HELPER_SHARED_KEY:-}
       TIKTOK_ENABLED: ${TIKTOK_ENABLED:-false}
       TIKTOK_CHANNEL: ${TIKTOK_CHANNEL:-}
-      Interactions__Ollama__BaseUrl: http://host.docker.internal:11434
+      Interactions__Ollama__BaseUrl: http://ollama:11434
       Narration__HostRuntimeDirectory: ${OBS_LIVE_BOT_TTS_HOST_DIRECTORY:-D:/OBS-Live/OBS-Live-Bot/data/runtime/tts}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -33,6 +33,50 @@ services:
     networks:
       - obs-live-bot
       - socialstream-internal
+
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.35.0}
+    container_name: gfm-studioos-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: "true"
+    expose:
+      - "11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test:
+        - CMD
+        - ollama
+        - list
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    networks:
+      - obs-live-bot
+
+  ollama-model:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.35.0}
+    container_name: gfm-studioos-ollama-model
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - /opt/studioos/provision-model.sh
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b-instruct-2507-q4_K_M}
+      OLLAMA_READY_ATTEMPTS: ${OLLAMA_READY_ATTEMPTS:-60}
+      OLLAMA_PULL_ATTEMPTS: ${OLLAMA_PULL_ATTEMPTS:-3}
+    volumes:
+      - ollama-models:/root/.ollama
+      - ./infra/ollama/provision-model.sh:/opt/studioos/provision-model.sh:ro
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - obs-live-bot
 
   socialstream:
     build:
@@ -121,6 +165,10 @@ networks:
     internal: true
   socialstream-egress:
     name: gfm-studioos-socialstream-egress
+
+volumes:
+  ollama-models:
+    name: gfm-studioos-ollama-models
 
 secrets:
   socialstream-keyring-unlock:

@@ -41,7 +41,7 @@ public sealed class InteractionOptionsValidator : IValidateOptions<InteractionOp
             failures.Add("Interactions:TtsProvider must be Development or Piper.");
         if (!Uri.TryCreate(options.Ollama.BaseUrl, UriKind.Absolute, out var ollamaUri) ||
             ollamaUri.Scheme is not ("http" or "https") ||
-            ollamaUri.Host is not ("localhost" or "127.0.0.1" or "::1" or "host.docker.internal"))
+            ollamaUri.Host is not ("localhost" or "127.0.0.1" or "::1" or "host.docker.internal" or "ollama"))
             failures.Add("Interactions:Ollama:BaseUrl must target a supported local host.");
         if (string.IsNullOrWhiteSpace(options.Ollama.Model))
             failures.Add("Interactions:Ollama:Model is required.");

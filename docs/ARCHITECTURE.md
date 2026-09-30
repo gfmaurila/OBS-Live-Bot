@@ -276,7 +276,9 @@ Infrastructure: InteractionProviderRegistry
                -> DevelopmentAiInteractionProvider (fallback explícito)
 ```
 
-- Ollama permanece um runtime local do host Windows, independente de n8n; não foi criado container de IA.
+- Ollama é um runtime local gerenciado por Docker no container `gfm-studioos-ollama`, independente de n8n. A API usa o hostname configurado `ollama` pela rede interna; o host Windows não faz parte do caminho normal de IA.
+- O modelo fica no volume persistente `gfm-studioos-ollama-models` e é provisionado idempotentemente por um serviço one-shot. Falha ou ausência do runtime degrada somente Interactions e não bloqueia o startup da API.
+- GPU NVIDIA é uma capacidade de Infrastructure habilitada pelo override Compose; o Compose base preserva fallback CPU. Domain/Application continuam sem dependência de Docker ou CUDA.
 - Application recebe somente contratos de AI e não conhece HTTP, endpoints ou payloads do Ollama.
 - Mensagens `system`, contexto e conteúdo `user` são enviados como roles separados; conteúdo do chat nunca é promovido a instrução de sistema.
 - `SemaphoreSlim` limita a uma inferência e a espera é bounded em duas requisições/2 segundos por padrão. Overload retorna `OLLAMA_BUSY`.

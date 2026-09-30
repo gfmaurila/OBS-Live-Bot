@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-10` estão concluídas. Task10 teve E2E real de áudio validado pelo YouTube e ouvido pelo analista: SSN `/live_chat` → SSE → interação → Ollama → Piper/WAV → fila → OBS. O autoplay foi desligado após a validação e permanece `false`; respostas escritas não estão implementadas. No ambiente headless testado, a source watch-page/classic não expôs chat confiavelmente, enquanto a rota oficial `live_chat` capturou mensagens reais; isso não é uma afirmação de falha universal do SSN. A URL de live é específica por transmissão e descoberta automática confiável não está implementada/comprovada. Hardening, testes e Git da Task10 concluídos. Task09.4.1 estabeleceu OAuth YouTube via SSN 0.4.18 e `safeStorage` persistente; Google password nunca é coletada ou armazenada pelo StudioOS. Task09.5 recuperou `GFM StudioOS - Narration` (`ffmpeg_source`) e restaurou health `Ready`.
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-10.1` estão concluídas tecnicamente. Task10 teve E2E real de áudio validado pelo YouTube e ouvido pelo analista: SSN `/live_chat` → SSE → interação → Ollama → Piper/WAV → fila → OBS. Task10.1 migrou o Ollama para Docker com modelo persistente e GPU validada; o E2E real de live com o novo runtime permanece pendente do checkpoint explícito do analista. O autoplay permanece `false`; respostas escritas não estão implementadas. No ambiente headless testado, a source watch-page/classic não expôs chat confiavelmente, enquanto a rota oficial `live_chat` capturou mensagens reais; isso não é uma afirmação de falha universal do SSN. A URL de live é específica por transmissão e descoberta automática confiável não está implementada/comprovada.
 
 ## Serviços locais
 
@@ -13,7 +13,7 @@ Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engin
 | OBS Live Bot Swagger | `http://localhost:5080/swagger` |
 | OBS Live Bot Swagger UI | `http://localhost:5080/swagger/index.html` |
 | OBS Live Bot n8n | `http://localhost:5679` |
-| GFM StudioOS Ollama | `http://localhost:11434` |
+| GFM StudioOS Ollama | `http://ollama:11434` (somente rede Docker) |
 
 ## n8n — Desenvolvimento
 
@@ -99,7 +99,7 @@ O subsistema de interações processa eventos normalizados pelo mesmo pipeline d
 - `OllamaAiInteractionProvider` usa IA real local; `DevelopmentAiInteractionProvider` permanece disponível para testes e fallback explícito.
 - `PiperTextToSpeechProvider` gera WAV PCM real localmente com a voz `pt_BR-faber-medium` (português brasileiro, 22.050 Hz, mono, PCM 16-bit).
 - **REAL LOCAL AI: YES. REAL LOCAL TTS: YES. REAL OBS NARRATION: YES.** Não há autoplay de conversas por padrão.
-- Nenhuma API paga, banco, broker, cache distribuído ou novo container é necessário.
+- Nenhuma API paga, banco, broker ou cache distribuído é necessário; o container Ollama local é a infraestrutura explícita da Task10.1.
 - O endpoint `/api/interactions/dev/test` só é registrado quando `ASPNETCORE_ENVIRONMENT=Development`.
 
 Exemplo de teste DEV:
@@ -119,17 +119,9 @@ Com `Interactions:TtsProvider=Piper`, `TextAndVoice` usa Ollama e Piper pelo pip
 
 ## IA local
 
-O provider selecionado é `Ollama`, executado no Windows host e acessível localmente em `http://localhost:11434`. O modelo principal é `qwen3:4b-instruct-2507-q4_K_M` (aproximadamente 2,5 GB), escolhido como modelo instruct multilíngue compacto para baixa latência no hardware local. A API em container acessa o mesmo runtime por `host.docker.internal`; o Ollama não faz parte do container n8n.
+O provider selecionado é `Ollama`, executado no container `gfm-studioos-ollama`. A API usa `http://ollama:11434` pela rede Docker; a porta não é publicada no host. O modelo `qwen3:4b-instruct-2507-q4_K_M` fica no volume persistente `gfm-studioos-ollama-models` e é provisionado de forma idempotente pelo serviço one-shot `gfm-studioos-ollama-model`.
 
-Verificação do runtime e do modelo:
-
-```powershell
-ollama --version
-ollama list
-curl.exe http://localhost:11434/api/version
-```
-
-Se o runtime não estiver ativo, inicie o aplicativo Ollama para Windows ou execute `ollama serve`. Não exponha a porta 11434 publicamente. O status seguro do provider está disponível em `GET /api/interactions/providers` e o estado selecionado em `GET /api/interactions/state`.
+O Ollama para Windows não é necessário e deve permanecer parado no runtime normal. GPU NVIDIA é habilitada pelo `docker-compose.gpu.yml`; o Compose base oferece fallback CPU. Consulte [docs/LOCAL-AI-RUNTIME.md](docs/LOCAL-AI-RUNTIME.md) para topologia, operação, persistência e evidências da Task10.1.
 
 Teste pelo StudioOS em ambiente `Development`:
 

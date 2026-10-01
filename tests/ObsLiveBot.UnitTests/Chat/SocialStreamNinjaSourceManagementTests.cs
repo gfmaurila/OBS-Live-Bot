@@ -12,15 +12,15 @@ namespace ObsLiveBot.UnitTests.Chat;
 
 public sealed class SocialStreamNinjaSourceManagementTests
 {
-    private const string CurrentVideoId = "WH7l_CMYCfU";
-    private const string LiveChatUrl = "https://www.youtube.com/live_chat?is_popout=1&v=WH7l_CMYCfU";
+    private const string CurrentVideoId = "_j0cCIamgpc";
+    private const string LiveChatUrl = "https://www.youtube.com/live_chat?is_popout=1&v=_j0cCIamgpc";
 
     [Fact]
     public void Locator_AcceptsOfficialLiveChatUrlAndProducesStablePerLiveKey()
     {
         Assert.True(YouTubeLiveChatSourceLocator.TryCreate(LiveChatUrl, out var first));
         Assert.True(YouTubeLiveChatSourceLocator.TryCreate(
-            "https://youtube.com/live_chat?v=WH7l_CMYCfU&is_popout=1", out var second));
+            "https://youtube.com/live_chat?v=_j0cCIamgpc&is_popout=1", out var second));
 
         Assert.Equal(LiveChatUrl, first!.Url);
         Assert.Equal(CurrentVideoId, first.VideoId);
@@ -29,11 +29,11 @@ public sealed class SocialStreamNinjaSourceManagementTests
     }
 
     [Theory]
-    [InlineData("https://www.youtube.com/watch?v=WH7l_CMYCfU")]
-    [InlineData("https://www.youtube.com/live_chat_replay?is_popout=1&v=WH7l_CMYCfU")]
-    [InlineData("http://www.youtube.com/live_chat?is_popout=1&v=WH7l_CMYCfU")]
-    [InlineData("https://youtube.com.evil.example/live_chat?is_popout=1&v=WH7l_CMYCfU")]
-    [InlineData("https://www.youtube.com/live_chat?is_popout=1&v=WH7l_CMYCfU&token=secret")]
+    [InlineData("https://www.youtube.com/watch?v=_j0cCIamgpc")]
+    [InlineData("https://www.youtube.com/live_chat_replay?is_popout=1&v=_j0cCIamgpc")]
+    [InlineData("http://www.youtube.com/live_chat?is_popout=1&v=_j0cCIamgpc")]
+    [InlineData("https://youtube.com.evil.example/live_chat?is_popout=1&v=_j0cCIamgpc")]
+    [InlineData("https://www.youtube.com/live_chat?is_popout=1&v=_j0cCIamgpc&token=secret")]
     public void Locator_RejectsUnsupportedOrCredentialBearingUrls(string url)
     {
         Assert.False(YouTubeLiveChatSourceLocator.TryCreate(url, out _));
@@ -64,11 +64,45 @@ public sealed class SocialStreamNinjaSourceManagementTests
         await provider.ConnectAsync(CancellationToken.None);
 
         Assert.Equal(1, handler.AddedLiveChatSources);
+        Assert.Equal(1, handler.IdempotentReplays);
         Assert.Equal(2, handler.YoutubeAutoAddConfigurations);
+        Assert.All(handler.RequestedVideoIds, videoId => Assert.Equal(CurrentVideoId, videoId));
         Assert.All(handler.Sources.Where(source => source.Target is "twitch" or "kick"), source => Assert.True(source.Active));
-        Assert.True(handler.Sources.Single(source => source.Id == "youtube-url-managed-live").Active);
+        Assert.True(handler.Sources.Single(source => source.Id == $"youtube-vid-{CurrentVideoId}").Active);
         Assert.False(handler.Sources.Single(source => source.Id == "youtube-url-same-live-watch").Active);
         Assert.True(handler.Sources.Single(source => source.Id == "youtube-url-older-live").Active);
+    }
+
+    [Fact]
+    public async Task Connect_DoesNotReplayStaleSourceFromPreviousLive()
+    {
+        var handler = new FakeSsnHandler(CurrentVideoId);
+        handler.Sources.Add(new FakeSource("youtube-url-previous-live", "youtube", "", "WH7l_CMYCfU", "classic", true));
+        var clients = new SingleClientFactory(handler);
+        var options = Options.Create(new SocialStreamNinjaOptions
+        {
+            Enabled = true,
+            ConfigureSources = true,
+            Endpoint = "http://ssn:17778",
+            Twitch = new() { Enabled = true, Channel = "gfmaurila" },
+            YouTube = new() { Enabled = true, Channel = "gfmaurila", AuthMode = "oauth", LiveChatUrl = LiveChatUrl },
+            Kick = new() { Enabled = true, Channel = "gfmaurila" }
+        });
+        var provider = new SocialStreamNinjaLiveChatProvider(
+            options,
+            clients,
+            new SocialStreamNinjaMessageMapper(options),
+            sender: null!,
+            NullLogger<SocialStreamNinjaLiveChatProvider>.Instance);
+
+        await provider.ConnectAsync(CancellationToken.None);
+
+        var managed = handler.Sources.Single(source => source.Id == $"youtube-vid-{CurrentVideoId}");
+        Assert.Equal(CurrentVideoId, managed.VideoId);
+        Assert.NotEqual("youtube-url-previous-live", managed.Id);
+        Assert.Single(handler.RequestedVideoIds);
+        Assert.Equal(CurrentVideoId, handler.RequestedVideoIds[0]);
+        Assert.True(handler.Sources.Single(source => source.Id == "youtube-url-previous-live").Active);
     }
 
     private static YouTubeLiveChatSourceLocator CreateLocator(string url)
@@ -106,6 +140,8 @@ public sealed class SocialStreamNinjaSourceManagementTests
         public List<FakeSource> Sources { get; }
         public int AddedLiveChatSources { get; private set; }
         public int YoutubeAutoAddConfigurations { get; private set; }
+        public int IdempotentReplays { get; private set; }
+        public List<string> RequestedVideoIds { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -148,15 +184,23 @@ public sealed class SocialStreamNinjaSourceManagementTests
         {
             var key = value.GetProperty("idempotencyKey").GetString()!;
             if (_sourcesByIdempotencyKey.TryGetValue(key, out var previous))
-                return Json(new { ok = true, payload = new { source = previous } });
+            {
+                IdempotentReplays++;
+                return Json(new { ok = true, payload = new { source = previous, idempotentReplay = true } });
+            }
 
             var url = value.GetProperty("url").GetString()!;
             Assert.StartsWith("https://www.youtube.com/live_chat?is_popout=1&v=", url, StringComparison.Ordinal);
-            var source = new FakeSource("youtube-url-managed-live", "youtube", "", _currentVideoId, "classic", false);
+            var videoId = value.GetProperty("videoId").GetString()!;
+            Assert.Equal(_currentVideoId, videoId);
+            RequestedVideoIds.Add(videoId);
+
+            // Mirrors SSN generateSourceId: an explicit videoId yields a stable per-live identity.
+            var source = new FakeSource($"youtube-vid-{videoId}", "youtube", "", videoId, "classic", false);
             Sources.Add(source);
             _sourcesByIdempotencyKey.Add(key, source);
             AddedLiveChatSources++;
-            return Json(new { ok = true, payload = new { source } });
+            return Json(new { ok = true, payload = new { source, idempotentReplay = false } });
         }
 
         private HttpResponseMessage SetActive(JsonElement value, bool active)

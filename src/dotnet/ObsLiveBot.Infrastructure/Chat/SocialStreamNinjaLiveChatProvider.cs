@@ -230,6 +230,7 @@ public sealed class SocialStreamNinjaLiveChatProvider(
                     {
                         target = "youtube",
                         url = liveChatLocator!.Url,
+                        videoId = liveChatLocator.VideoId,
                         idempotencyKey = liveChatLocator.IdempotencyKey
                     }, cancellationToken).ConfigureAwait(false);
                     var canonicalId = added.RootElement.TryGetProperty("payload", out var addPayload) &&

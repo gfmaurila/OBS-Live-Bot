@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Application.Features.Chat.Ingest;
+using ObsLiveBot.Application.YouTube;
 using ObsLiveBot.Domain.Chat;
 using ObsLiveBot.Infrastructure.Configuration;
 
@@ -13,6 +14,7 @@ namespace ObsLiveBot.Infrastructure.Chat;
 
 public sealed class SocialStreamNinjaLiveChatProvider(
     IOptions<SocialStreamNinjaOptions> options,
+    IOptions<YouTubeLiveDiscoveryOptions> liveDiscoveryOptions,
     IHttpClientFactory httpClientFactory,
     SocialStreamNinjaMessageMapper mapper,
     ISender sender,
@@ -21,6 +23,7 @@ public sealed class SocialStreamNinjaLiveChatProvider(
     private readonly object _gate = new();
     private readonly HashSet<string> _platformsObserved = new(StringComparer.OrdinalIgnoreCase);
     private readonly SocialStreamNinjaOptions _options = options.Value;
+    private readonly YouTubeLiveDiscoveryOptions _liveDiscovery = liveDiscoveryOptions.Value;
     private HttpResponseMessage? _activeStream;
     private LiveChatProviderSnapshot _snapshot = new(
         LiveChatProviderType.SocialStreamNinja,
@@ -62,7 +65,10 @@ public sealed class SocialStreamNinjaLiveChatProvider(
             {
                 await ConfigureYouTubeAutoDiscoveryAsync(
                     client,
-                    enabled: string.IsNullOrWhiteSpace(_options.YouTube.LiveChatUrl),
+                    // SSN's own YouTube auto-add stays off when StudioOS owns the lifecycle,
+                    // because its discovery is unreliable and creates sources nobody can reconcile.
+                    enabled: !AutomaticDiscoveryOwnsYouTubeSource &&
+                             string.IsNullOrWhiteSpace(_options.YouTube.LiveChatUrl),
                     cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -335,15 +341,28 @@ public sealed class SocialStreamNinjaLiveChatProvider(
     {
         if (_options.Twitch.Enabled && !string.IsNullOrWhiteSpace(_options.Twitch.Channel))
             yield return ("twitch", _options.Twitch.Channel);
-        if (_options.YouTube.Enabled && !string.IsNullOrWhiteSpace(_options.YouTube.LiveChatUrl))
+
+        // When automatic discovery owns the YouTube lifecycle this provider must not create or
+        // start a YouTube source: two owners racing on the same live is exactly how duplicates
+        // appear. A manual per-live URL keeps the previous provider-managed behavior.
+        if (!AutomaticDiscoveryOwnsYouTubeSource && _options.YouTube.Enabled &&
+            !string.IsNullOrWhiteSpace(_options.YouTube.LiveChatUrl))
             yield return ("youtube", _options.YouTube.LiveChatUrl);
-        else if (_options.YouTube.Enabled &&
+        else if (!AutomaticDiscoveryOwnsYouTubeSource && _options.YouTube.Enabled &&
                  !string.Equals(_options.YouTube.AuthMode, "oauth", StringComparison.OrdinalIgnoreCase) &&
                  IsYouTubeSourceLocator(_options.YouTube.Channel))
             yield return ("youtube", _options.YouTube.Channel!);
+
         if (_options.Kick.Enabled && !string.IsNullOrWhiteSpace(_options.Kick.Channel))
             yield return ("kick", _options.Kick.Channel);
     }
+
+    /// <summary>
+    /// True when automatic discovery owns the YouTube source lifecycle. A manual per-live URL
+    /// override keeps the previous behavior, so the existing manual flow stays available.
+    /// </summary>
+    private bool AutomaticDiscoveryOwnsYouTubeSource =>
+        _liveDiscovery.Enabled && string.IsNullOrWhiteSpace(_liveDiscovery.ManualLiveChatUrl);
 
     private static string? PreferredSimpleConnectionMode(string target) =>
         string.Equals(target, "twitch", StringComparison.OrdinalIgnoreCase) ? "classic" : null;

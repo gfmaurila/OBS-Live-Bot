@@ -85,4 +85,16 @@ YouTube account authorization is provider-controlled by SSN. The user enters the
 
 OAuth uses SSN's hosted account authorization and does not require the analyst to create a Google Cloud project or provide a client secret. The selected channel's public title/ID are safe metadata; email/login identifiers, passwords, authorization codes, tokens, cookies, and PKCE values remain prohibited from public configuration, logs, and versioned files.
 
-The optional public YouTube `liveChatUrl` is a per-live URL only (HTTPS official YouTube `/live_chat` route and validated video ID); it is not an OAuth/session value. It must never include cookies, credentials, or private query material. Current-live discovery is not claimed. SSN owns browser capture; StudioOS does not scrape YouTube DOM.
+The optional public YouTube `liveChatUrl` is a per-live URL only (HTTPS official YouTube `/live_chat` route and validated video ID); it is not an OAuth/session value. It must never include cookies, credentials, or private query material. SSN owns browser capture.
+
+## OBS-LIVE-BOT-10.1.2 — automatic discovery and the public configuration boundary
+
+The previous "current-live discovery is not claimed" limitation is now resolved, within a deliberately narrow security boundary.
+
+Discovery reads only the channel's own public `/streams` page and reads only a public video ID from it. No Google Cloud project, OAuth grant, API key, stream key, session cookie or browser profile is involved, and the StudioOS process never receives YouTube credentials. The configured channel is validated as a plain handle or `UC…` ID before a URL is built, so a configuration value cannot become an arbitrary URL, a different host or a private endpoint. The HTTP client is bounded by a request timeout and a hard response-size cap so a hostile or unexpectedly large page cannot exhaust the API process.
+
+Two ownership rules are security-relevant rather than cosmetic. SSN's `youtubeAutoAdd` stays disabled in automatic mode so only StudioOS creates and starts the per-live source, and the SSN chat provider no longer creates or starts a YouTube source while discovery owns the live. This prevents two components from concurrently mutating capture state.
+
+Discovery reads the public page but still never scrapes a search results page, never touches the private browser profile of the SSN-owned user-data volume, and never reads the Aitum configuration beyond the read-only video-identity check performed during the Task10.1.1 investigation. The `liveDiscovery` block is public configuration only and passes through the same forbidden-name rejection as the rest of `studioos.socialstream.json`.
+
+`GET /api/youtube/live-discovery` is a read-only projection. It starts, stops and reconfigures nothing, and it returns no secret. Validation explicitly confirmed that discovery logs and log lines carry no secrets, and unit tests assert that no credential-shaped value can reach the result, the logs or the API response.

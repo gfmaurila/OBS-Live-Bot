@@ -1,17 +1,20 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Application.LiveState;
 using ObsLiveBot.Application.LiveChat;
 using ObsLiveBot.Application.Interactions;
+using ObsLiveBot.Application.YouTube;
 using ObsLiveBot.Infrastructure.Chat;
 using ObsLiveBot.Infrastructure.Configuration;
 using ObsLiveBot.Infrastructure.Events;
 using ObsLiveBot.Infrastructure.Health;
 using ObsLiveBot.Infrastructure.Interactions;
 using ObsLiveBot.Infrastructure.Obs;
+using ObsLiveBot.Infrastructure.YouTube;
 using ObsLiveBot.Application.Narration;
 
 namespace ObsLiveBot.Infrastructure;
@@ -129,8 +132,49 @@ public static class DependencyInjection
         services.AddSingleton<ILiveChatProvider>(provider => provider.GetRequiredService<SocialStreamNinjaLiveChatProvider>());
         services.AddSingleton<ILiveChatProviderRegistry, LiveChatProviderRegistry>();
         services.AddHostedService<LiveChatProviderHostedService>();
+        AddYouTubeLiveDiscovery(services, configuration);
         services.AddHealthChecks().AddCheck<LiveChatHealthCheck>("chat");
         return services;
+    }
+
+    /// <summary>
+    /// Registers automatic YouTube live discovery and the Social Stream Ninja source lifecycle.
+    /// The named <c>SocialStreamNinja</c> client is shared with the chat provider so discovery
+    /// and chat ingestion talk to the same local SSN instance.
+    /// </summary>
+    private static void AddYouTubeLiveDiscovery(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<YouTubeLiveDiscoveryOptions>()
+            .Bind(configuration.GetSection(YouTubeLiveDiscoveryOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<YouTubeLiveDiscoveryOptions>, YouTubeLiveDiscoveryOptionsValidator>();
+
+        // No client-level response cap: the streams page is a few hundred KB and the discovery
+        // already reads it with its own hard byte cap. The default timeout is disabled because the
+        // discovery applies its own bounded per-request timeout.
+        services.AddHttpClient("YouTubeChannelStreams", client =>
+            client.Timeout = Timeout.InfiniteTimeSpan);
+
+        services.AddSingleton<SocialStreamNinjaCommandClient>(provider =>
+        {
+            var factory = provider.GetRequiredService<IHttpClientFactory>();
+            return new SocialStreamNinjaCommandClient(
+                factory.CreateClient("SocialStreamNinja"),
+                provider.GetRequiredService<ILogger<SocialStreamNinjaCommandClient>>());
+        });
+        services.AddSingleton<IYouTubeChatSourceManager, YouTubeChatSourceManager>();
+
+        services.AddSingleton<IYouTubeLiveDiscovery>(provider =>
+            new YouTubeChannelStreamsPageDiscovery(
+                provider.GetRequiredService<IHttpClientFactory>().CreateClient("YouTubeChannelStreams"),
+                provider.GetRequiredService<IOptions<YouTubeLiveDiscoveryOptions>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<YouTubeChannelStreamsPageDiscovery>>()));
+
+        services.AddSingleton<YouTubeLiveWorkQueue>();
+        services.AddSingleton<YouTubeLiveOrchestrator>();
+        services.AddSingleton<IYouTubeLiveOwnershipReader>(provider => provider.GetRequiredService<YouTubeLiveOrchestrator>());
+        services.AddHostedService<YouTubeLiveReconcileWorker>();
     }
 
     public static IServiceCollection AddInteractionInfrastructure(

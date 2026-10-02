@@ -91,6 +91,14 @@ O teste real detectou a transição controlada `Iniciando -> Finalizando -> Inic
 - Nenhuma rotação foi executada durante o diagnóstico e a credencial do StudioOS não foi alterada.
 - Follow-up obrigatório após a Task09.3.1: rotacionar a credencial exposta e atualizar OBS e armazenamento seguro do StudioOS em conjunto, sem imprimir, registrar, documentar ou versionar o novo valor.
 
+## OBS-LIVE-BOT-10.1.2 — consumo de live-state pelo reconciliador do YouTube
+
+O `YouTubeLiveOrchestrator` passou a ser um consumidor de `IReadOnlyLiveStateTracker`. Ele **apenas lê** o estado de streaming/gravação do OBS; nenhuma transição de cena, source, filtro ou áudio é disparada, e o reconciliador nunca altera o OBS. O estado atual do OBS é a verdade: se o OBS não está transmitindo, nenhuma fonte do YouTube é criada ou iniciada.
+
+O worker reage a três-fontes: no startup, para convergir um restart do StudioOS durante uma live já em andamento; a cada sinal de live-state, coalescido para não gerar trabalho duplicado; e em um tick periódico, porque o OBS pode permanecer transmitindo através de uma troca de live do YouTube sem emitir sinal algum. O tick é limitado pelo mesmo `minDiscoveryIntervalSeconds`, e cada reconciliação é idempotente, então um disparo sem trabalho custa quase nada.
+
+Validação em live real, sem interromper a transmissão: o estado do OBS permaneceu `Connected`, cena em programa `Iniciando`, `streaming=true` e `recording=true` durante toda a execução, incluindo a recriação do container da API. As tentativas de descoberta avançaram com o tick, sem churn de fonte e sem duplicata.
+
 ## Dívida técnica do ambiente OBS — registrada na Task10.1.1
 
 Diagnóstico somente leitura, sem nenhuma alteração no OBS, no Ulanzi, no streaming ou na gravação. Estes itens **não** pertencem ao pipeline de narração do StudioOS, **não** bloqueiam o E2E do Ollama Docker e **não** devem ser reparados sem task explícita.

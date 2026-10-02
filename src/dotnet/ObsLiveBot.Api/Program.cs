@@ -8,6 +8,7 @@ using ObsLiveBot.Api.Features.Obs.LiveState;
 using ObsLiveBot.Api.Features.Chat;
 using ObsLiveBot.Api.Features.Interactions;
 using ObsLiveBot.Api.Features.Narration;
+using ObsLiveBot.Api.Features.YouTube.LiveDiscovery;
 using ObsLiveBot.Application.Features.Obs.GetStatus;
 using ObsLiveBot.Application.Validation;
 using ObsLiveBot.Infrastructure;
@@ -124,6 +125,7 @@ app.MapObsLiveStateEndpoints();
 app.MapLiveChatEndpoints(app.Environment.IsDevelopment());
 app.MapInteractionEndpoints(app.Environment.IsDevelopment());
 app.MapNarrationEndpoints(app.Environment.IsDevelopment());
+app.MapYouTubeLiveDiscoveryEndpoints();
 app.Run();
 
 public partial class Program;

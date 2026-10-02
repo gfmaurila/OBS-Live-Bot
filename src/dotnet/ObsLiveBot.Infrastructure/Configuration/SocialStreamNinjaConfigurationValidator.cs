@@ -14,7 +14,13 @@ public static class SocialStreamNinjaConfigurationValidator
 
     private static readonly HashSet<string> RootFields = new(StringComparer.OrdinalIgnoreCase)
     {
-        "schemaVersion", "enabled", "connection", "providers"
+        "schemaVersion", "enabled", "connection", "providers", "liveDiscovery"
+    };
+
+    private static readonly HashSet<string> LiveDiscoveryFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "enabled", "channel", "manualLiveChatUrl", "autoReleaseOnEnd", "minDiscoveryIntervalSeconds",
+        "requestTimeoutSeconds", "maxResponseBytes"
     };
 
     private static readonly HashSet<string> ConnectionFields = new(StringComparer.OrdinalIgnoreCase)
@@ -69,6 +75,41 @@ public static class SocialStreamNinjaConfigurationValidator
                  !YouTubeLiveChatSourceLocator.TryCreate(liveChatUrl.GetString(), out _)))
                 throw new InvalidDataException("Social Stream YouTube liveChatUrl must be an official YouTube live_chat popout URL with a video ID.");
         }
+
+        if (root.TryGetProperty("liveDiscovery", out var liveDiscovery)) ValidateLiveDiscovery(liveDiscovery);
+    }
+
+    private static void ValidateLiveDiscovery(JsonElement liveDiscovery)
+    {
+        if (liveDiscovery.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("Social Stream liveDiscovery must be an object.");
+        RejectUnknown(liveDiscovery, LiveDiscoveryFields);
+
+        if (liveDiscovery.TryGetProperty("enabled", out var enabled) &&
+            enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new InvalidDataException("Social Stream liveDiscovery enabled must be boolean.");
+        if (liveDiscovery.TryGetProperty("channel", out var channel) &&
+            channel.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+            throw new InvalidDataException("Social Stream liveDiscovery channel must be a string or null.");
+        if (liveDiscovery.TryGetProperty("autoReleaseOnEnd", out var release) &&
+            release.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new InvalidDataException("Social Stream liveDiscovery autoReleaseOnEnd must be boolean.");
+        if (liveDiscovery.TryGetProperty("manualLiveChatUrl", out var manual) &&
+            (manual.ValueKind != JsonValueKind.String ||
+             !YouTubeLiveChatSourceLocator.TryCreate(manual.GetString(), out _)))
+            throw new InvalidDataException("Social Stream liveDiscovery manualLiveChatUrl must be an official YouTube live_chat popout URL with a video ID.");
+
+        ValidateRange(liveDiscovery, "minDiscoveryIntervalSeconds", 0, 3_600);
+        ValidateRange(liveDiscovery, "requestTimeoutSeconds", 1, 120);
+        ValidateRange(liveDiscovery, "maxResponseBytes", 65_536, 33_554_432);
+    }
+
+    private static void ValidateRange(JsonElement element, string name, int min, int max)
+    {
+        if (!element.TryGetProperty(name, out var value)) return;
+        if (value.ValueKind != JsonValueKind.Number ||
+            value.GetInt32() is var number && (number < min || number > max))
+            throw new InvalidDataException($"Social Stream liveDiscovery {name} is out of range.");
     }
 
     private static void RejectSecrets(JsonElement element)

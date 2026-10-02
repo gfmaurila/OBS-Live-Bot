@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
+using ObsLiveBot.Application.YouTube;
 using ObsLiveBot.Domain.Chat;
 using ObsLiveBot.Infrastructure.Chat;
 using ObsLiveBot.Infrastructure.Configuration;
@@ -55,6 +56,7 @@ public sealed class SocialStreamNinjaSourceManagementTests
         });
         var provider = new SocialStreamNinjaLiveChatProvider(
             options,
+            ManualOverrideDiscoveryOptions(),
             clients,
             new SocialStreamNinjaMessageMapper(options),
             sender: null!,
@@ -90,6 +92,7 @@ public sealed class SocialStreamNinjaSourceManagementTests
         });
         var provider = new SocialStreamNinjaLiveChatProvider(
             options,
+            ManualOverrideDiscoveryOptions(),
             clients,
             new SocialStreamNinjaMessageMapper(options),
             sender: null!,
@@ -110,6 +113,15 @@ public sealed class SocialStreamNinjaSourceManagementTests
         Assert.True(YouTubeLiveChatSourceLocator.TryCreate(url, out var locator));
         return locator!;
     }
+
+    /// <summary>An explicit per-live URL keeps the previous provider-managed behavior.</summary>
+    private static IOptions<YouTubeLiveDiscoveryOptions> ManualOverrideDiscoveryOptions() =>
+        Options.Create(new YouTubeLiveDiscoveryOptions
+        {
+            Enabled = true,
+            Channel = "gfmaurila",
+            ManualLiveChatUrl = LiveChatUrl
+        });
 
     private sealed class SingleClientFactory(FakeSsnHandler handler) : IHttpClientFactory
     {

@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-10.1.1` estão concluídas. Task10 teve E2E real de áudio validado pelo YouTube e ouvido pelo analista: SSN `/live_chat` → SSE → interação → Ollama → Piper/WAV → fila → OBS. Task10.1 migrou o Ollama para Docker com modelo persistente e GPU validada, e a Task10.1.1 repetir esse E2E no runtime Docker também foi confirmado pelo analista, que ouviu o áudio real sem qualquer dependência do Ollama do Windows. O autoplay permanece `false`; respostas escritas e voz do chat lida a partir da mensagem não estão implementadas. No ambiente headless testado, a source watch-page/classic não expôs chat confiavelmente, enquanto a rota oficial `live_chat` capturou mensagens reais; isso não é uma afirmação de falha universal do SSN. A URL de live é específica por transmissão e descoberta automática confiável não está implementada/comprovada. Dívida técnica de captura de áudio do OBS está registrada em [docs/OBS-INTEGRATION.md](docs/OBS-INTEGRATION.md).
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-10.1.2` estão concluídas. Task10 teve E2E real de áudio validado pelo YouTube e ouvido pelo analista: SSN `/live_chat` → SSE → interação → Ollama → Piper/WAV → fila → OBS. Task10.1 migrou o Ollama para Docker com modelo persistente e GPU validada, e a Task10.1.1 repetir esse E2E no runtime Docker também foi confirmado pelo analista, que ouviu o áudio real sem qualquer dependência do Ollama do Windows. A Task10.1.2 implementou a descoberta automática do YouTube live a partir da página pública `/streams` do canal, dispensando a URL manual por transmissão, e gerencia a fonte SSN canônica `youtube-vid-<videoId>` por meio de um reconciliador idempotente. O autoplay permanece `false`; respostas escritas e voz do chat lida a partir da mensagem não estão implementadas. No ambiente headless testado, a source watch-page/classic não expôs chat confiavelmente, enquanto a rota oficial `live_chat` capturou mensagens reais; isso não é uma afirmação de falha universal do SSN. Dívida técnica de captura de áudio do OBS está registrada em [docs/OBS-INTEGRATION.md](docs/OBS-INTEGRATION.md).
 
 ## Serviços locais
 
@@ -49,6 +49,7 @@ Use a senha local provisionada no ambiente; credenciais não são documentadas n
 | Narration (Development) | POST | `/api/narration/dev/test` | `http://localhost:5080/api/narration/dev/test` |
 | Narration | PUT | `/api/narration/mute` | `http://localhost:5080/api/narration/mute` |
 | Narration | PUT | `/api/narration/volume` | `http://localhost:5080/api/narration/volume` |
+| YouTube Live | GET | `/api/youtube/live-discovery` | `http://localhost:5080/api/youtube/live-discovery` |
 
 ## Captura simples de chat
 
@@ -59,6 +60,12 @@ Captura simples não usa os Client IDs do arquivo `studioos.providers.json`, OAu
 O arquivo público `studioos.socialstream.json` aceita somente dados não secretos. O YouTube pode declarar `authMode: "oauth"`; campos como `usuario`, `senha`, `password`, Client Secret, tokens, authorization code e cookies são rejeitados de forma controlada, com motivo sanitizado e sem derrubar a API.
 
 O SSN dedicado usa Docker/headless com Xvfb quando necessário, volume próprio em `data/runtime/socialstream`, sem acesso ao socket Docker, perfil/cookies do navegador, OBS config ou credenciais OBS. Consulte [docs/SOCIAL-STREAM-NINJA.md](docs/SOCIAL-STREAM-NINJA.md) para estado validado e limitações de teste real.
+
+## Descoberta automática do YouTube live
+
+A URL de live do YouTube deixou de ser informada manualmente por transmissão. O bloco público opcional `liveDiscovery` em `studioos.socialstream.json` habilita a descoberta do live corrente do canal, e a API gerencia a fonte SSN canônica `youtube-vid-<videoId>` de forma idempotente.
+
+A descoberta lê somente a página pública `/streams` do próprio canal e identifica a live pelo badge público do YouTube. Não há Google Cloud, OAuth, API key, stream key nem scraping de busca, e o `youtubeAutoAdd` do SSN permanece desligado para que apenas o StudioOS seja dono da fonte por live. Um `manualLiveChatUrl` explícito tem precedência e desliga a descoberta automática. Fontes encerradas são apenas paradas, nunca excluídas. `GET /api/youtube/live-discovery` expõe somente leitura do estado atual. Consulte [docs/SOCIAL-STREAM-NINJA.md](docs/SOCIAL-STREAM-NINJA.md).
 
 ## APIs oficiais (avançado)
 
@@ -88,7 +95,7 @@ Tokens de acesso/refresh, client secrets, authorization codes, senhas, cookies e
 
 Autorização iniciada no StudioOS deverá mostrar o endereço oficial de verificação e o código de usuário; o usuário conclui a autorização no navegador. A sessão deve tratar refresh/revogação, EventSub reconnect/keepalive e desconexão. A mensagem normalizada segue pipeline, dedupe e buffer existentes. Interação automática global e autoplay da narração permanecem desligados; não há envio de mensagens Twitch nesta task. Estado atual e limitações: [docs/TWITCH.md](docs/TWITCH.md).
 
-Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages`, `/api/chat/events`, `/api/interactions/state`, `/api/interactions/recent`, `/api/interactions/providers`, `/api/narration/state` e `/api/narration/recent`.
+Endpoints de leitura: `GET /health`, `/api/obs/status`, `/api/obs/live-state`, `/api/obs/events`, `/api/chat/providers`, `/api/chat/state`, `/api/chat/messages`, `/api/chat/events`, `/api/interactions/state`, `/api/interactions/recent`, `/api/interactions/providers`, `/api/narration/state`, `/api/narration/recent` e `/api/youtube/live-discovery`.
 
 ## AI Interaction e TTS
 

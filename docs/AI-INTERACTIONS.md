@@ -58,3 +58,11 @@ A validação com o Ollama do Windows parado comprovou inferência real via API,
 O E2E de live foi repetido no runtime Docker e concluído: mensagens reais `!studio` na source SSN `live_chat` de uma transmissão ao vivo do YouTube geraram resposta real pelo Ollama Docker, TTS Piper real e narração concluída no OBS, e o analista confirmou explicitamente ter ouvido o áudio. Nenhuma dependência do Ollama do Windows, que permaneceu parado. `AutoPlayInteractions` foi desligado após o teste e seu estado final é `false`.
 
 Semântica: `Interaction.Completed` significa que a geração da resposta (AI + TTS) concluiu com sucesso e foi publicada. A reprodução OBS é um lifecycle separado da Narration (`Queued → Started → Completed/Failed`), correlacionado, porém sem acoplamento de domínio; portanto a interação pode aparecer Completed antes do fim do áudio.
+
+## OBS-LIVE-BOT-10.1.2 — limite de automação preservado
+
+A descoberta automática do YouTube live alterou apenas qual fonte SSN está ativa, não o pipeline de interação. Nenhuma mensagem real de chat pode responder por voz ou texto enquanto `AutoPlayInteractions=false`, independentemente de como a fonte foi criada.
+
+Validação com uma mensagem real do YouTube recebida na source descoberta automaticamente: a decisão foi `Ignore` e a interação terminou com `responseText`, provider/modelo de IA, provider de TTS e `audioPath` nulos. A narração reportou `started=0`, `completed=0` e `lastPlaybackAtUtc=null`, confirmando que nenhum áudio foi gerado nem reproduzido. `AutoPlayInteractions` permaneceu `false` e o trigger `!studio` não foi acionado.
+
+Um detalhe de configuração merece registro: a mensagem de validação continha a palavra `StudioOS`, que faz parte de `BotMentionTriggers`. Por isso ela foi classificada como menção, ou seja, `AutoPlayDisabled` em vez de `NoTrigger`. O efeito é o mesmo e igualmente correto:ignorada sem executar IA/TTS. Mensagens comuns sem menção e sem comando continuam recebendo `NoTrigger`, como observado em outros eventos reais do mesmo source.

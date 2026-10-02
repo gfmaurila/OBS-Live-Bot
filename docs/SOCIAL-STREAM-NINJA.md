@@ -132,4 +132,69 @@ The SSN 0.4.18 owner-account package was inspected before changing the runtime. 
 
 The public configuration contains only public provider/channel/auth-mode settings. StudioOS never receives or stores the Google password. Token, cookie and keyring contents were not printed or exposed.
 
+## OBS-LIVE-BOT-10.1.2 — automatic YouTube live discovery
+
+Automatic discovery is now implemented and owns the per-live YouTube source. The previous "supply a URL per live" workaround is no longer required for normal operation.
+
+### How the current live is discovered
+
+Discovery reads the channel's own public streams page (`https://www.youtube.com/@<handle>/streams`) and takes the entry that carries YouTube's `LIVE` badge, whose animation target is that entry's video ID. A finished live, a playlist and a scheduled premiere all use different badge styles, so only a genuinely live entry is reported.
+
+This is channel-scoped public information. It needs no Google Cloud project, no OAuth, no API key, no stream key, and it never reads a search results page. Only a public video ID leaves the discovery component, and that ID is already part of the public live URL. The configured value is validated as a plain channel handle or a `UC…` channel ID before any URL is built, so a configured channel cannot become an arbitrary URL or a different host.
+
+SSN's own `youtubeAutoAdd` stays **off** in this mode. Its discovery was previously unreliable and produced sources StudioOS could not reconcile, so two owners must never race on the same live.
+
+### Ownership and lifecycle
+
+```text
+OBS stream state / periodic tick
+  -> YouTubeLiveOrchestrator (idempotent reconciler, current OBS state is the truth)
+  -> IYouTubeLiveDiscovery (public streams page)
+  -> IYouTubeChatSourceManager (canonical youtube-vid-<videoId> via SSN source API)
+```
+
+- The canonical identity is `youtube-vid-<videoId>`. The same live always resolves to the same source, so a repeated transition never creates a duplicate.
+- The SSN chat provider no longer creates or starts a YouTube source while discovery owns it. It still manages Twitch and Kick exactly as before, and an explicit manual `liveChatUrl` retains the previous provider-managed behavior.
+- A finished live is stopped, never deleted, so the record stays auditable and reversible. Ownership is always cleared when the live ends, so a previous live can never be reused.
+- The reconciler wakes on a live-state signal **and** on a periodic tick. OBS can stay streaming across a YouTube live change, so a steady state is still re-checked. Every entry point converges to the same result: false→true discovers, true→true does not duplicate, true→false releases, and StudioOS restart, OBS reconnect and SSN restart all reconcile without recreating a working source.
+- If the page briefly exposes more than one live badge, the live already validated wins while it is still live, which avoids flapping between two simultaneous lives.
+- Discovery and SSN failures are contained: they never affect the OBS connection, chat ingestion, Twitch or Kick.
+
+### Configuration
+
+`liveDiscovery` is an optional public block in `studioos.socialstream.json`. An explicit `manualLiveChatUrl` always takes precedence and disables automatic discovery.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` when the block exists | Enables automatic discovery |
+| `channel` | — | Public handle (`gfmaurila`/`@gfmaurila`) or `UC…` channel ID |
+| `manualLiveChatUrl` | — | Per-live override; disables discovery while set |
+| `autoReleaseOnEnd` | `true` | Stop the source when the live ends, preserving the record |
+| `minDiscoveryIntervalSeconds` | `30` | Minimum spacing between discovery attempts and the worker tick period |
+| `requestTimeoutSeconds` | `20` | Bounded per-request timeout |
+| `maxResponseBytes` | `4194304` | Hard cap on the page read into memory |
+
+`GET /api/youtube/live-discovery` is a read-only projection of ownership: enabled state, current public video ID, its public live and chat URLs, the SSN source ID, the last discovery method and reason, and the observed active source list. It never starts, stops or reconfigures anything, and it returns no secret.
+
+### Validation record — 2026-10-01
+
+Validated against a real live broadcast, with OBS streaming and recording left running throughout.
+
+| Check | Observation |
+|---|---|
+| Discovery | PASS: the live was found automatically with no URL supplied, method `ChannelStreamsPage` |
+| Source identity | PASS: `_j0cCIamgpc` mapped to the existing canonical `youtube-vid-_j0cCIamgpc`; outcome `Reused`, `retiredDuplicates=0` |
+| No duplication | PASS: exactly one active YouTube source; active set was `twitch-user-gfmaurila`, `kick-user-gfmaurila`, `youtube-vid-_j0cCIamgpc` |
+| SSN untouched | PASS: the SSN container was never restarted or recreated during the run, so the source was reused rather than re-added |
+| Periodic tick | PASS: discovery attempts advanced on the tick while OBS state stayed steady, with no source churn |
+| Real chat on the discovered source | PASS: a real YouTube message arrived over SSE on `youtube-vid-_j0cCIamgpc`, was normalized, published through MediatR and returned by the chat API |
+| AI/TTS boundary | PASS: that message was decided `Ignore`; `responseText`, AI provider/model, TTS provider and `audioPath` were all null, and narration reported `started=0`, `completed=0`, `lastPlaybackAtUtc=null` |
+| `AutoPlayInteractions` | PASS: still `false`; trigger `!studio` unchanged |
+| OBS safety | PASS: `Connected`, scene `Iniciando`, streaming and recording never stopped or restarted; no scene, source, audio or Ulanzi change |
+| Regression/build | PASS: 335/335 tests; API build with 0 errors and 0 warnings |
+
+Two defects were found and fixed during this task rather than left in place. `HttpClient.MaxResponseContentBufferSize = 0` is rejected by .NET and crash-looped the container on first deploy. A manual `liveChatUrl` override reported a "manual override" reason while still running discovery; it now genuinely disables discovery. A third gap was that the heartbeat logic existed but nothing invoked it while OBS state stayed steady, so the worker now wakes on a tick as well as on signals.
+
+Known limitation: YouTube's public page structure is an internal detail. The live-badge pattern is therefore pinned by unit tests, but a future YouTube change could require updating `YouTubeStreamsPageRules`. The failure mode is safe: no live badge is found, no source is changed, and `lastReason` reports it.
+
 At the end of this validation, API health is still `degraded` solely because Narration reports `Degraded`. Its queue is empty and it has no playback or failure events. A read-only OBS WebSocket `GetInputList` check confirmed the configured source `GFM StudioOS - Narration` is absent from the current OBS inputs. The health model is behaving as designed: a missing playback source is unavailable even when idle, so this is not an idle-queue false alarm. No audio was started, and Task09.4.1 did not alter OBS inputs or narration runtime configuration. The source's absence was already reported during Task09.4 and is not a regression from this task; recreating it would modify OBS outside this task's authorized scope.

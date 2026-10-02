@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using ObsLiveBot.Application.YouTube;
 using ObsLiveBot.Infrastructure.Configuration;
 
 namespace ObsLiveBot.Api.Configuration;
@@ -33,6 +34,7 @@ public static class SocialStreamNinjaConfigurationLoader
             MapProvider(values, providers, "twitch", nameof(SocialStreamNinjaOptions.Twitch));
             MapProvider(values, providers, "youtube", nameof(SocialStreamNinjaOptions.YouTube));
             MapProvider(values, providers, "kick", nameof(SocialStreamNinjaOptions.Kick));
+            MapLiveDiscovery(values, root);
             configuration.AddInMemoryCollection(values);
             return new(true, "loaded");
         }
@@ -54,6 +56,24 @@ public static class SocialStreamNinjaConfigurationLoader
         values[$"{prefix}:Channel"] = provider.TryGetProperty("channel", out var channel) ? channel.GetString() : null;
         values[$"{prefix}:AuthMode"] = provider.TryGetProperty("authMode", out var authMode) ? authMode.GetString() : null;
         values[$"{prefix}:LiveChatUrl"] = provider.TryGetProperty("liveChatUrl", out var liveChatUrl) ? liveChatUrl.GetString() : null;
+    }
+
+    private static void MapLiveDiscovery(IDictionary<string, string?> values, JsonElement root)
+    {
+        if (!root.TryGetProperty("liveDiscovery", out var discovery)) return;
+        var prefix = YouTubeLiveDiscoveryOptions.SectionName;
+        values[$"{prefix}:Enabled"] = GetBoolean(discovery, "enabled", true).ToString();
+        values[$"{prefix}:Channel"] = discovery.TryGetProperty("channel", out var channel) ? channel.GetString() : null;
+        values[$"{prefix}:ManualLiveChatUrl"] = discovery.TryGetProperty("manualLiveChatUrl", out var manual)
+            ? manual.GetString()
+            : null;
+        values[$"{prefix}:AutoReleaseOnEnd"] = GetBoolean(discovery, "autoReleaseOnEnd", true).ToString();
+        values[$"{prefix}:MinDiscoveryIntervalSeconds"] =
+            GetInteger(discovery, "minDiscoveryIntervalSeconds", 30).ToString();
+        values[$"{prefix}:RequestTimeoutSeconds"] =
+            GetInteger(discovery, "requestTimeoutSeconds", 20).ToString();
+        values[$"{prefix}:MaxResponseBytes"] =
+            GetInteger(discovery, "maxResponseBytes", 4 * 1024 * 1024).ToString();
     }
 
     private static bool GetBoolean(JsonElement element, string name, bool fallback) =>

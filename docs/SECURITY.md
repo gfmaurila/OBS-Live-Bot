@@ -64,6 +64,19 @@ Provider configuration is external and non-secret: the ignored `.env` contains o
 
 The OBS WebSocket credential used during Task09.3.1 troubleshooting was exposed. Diagnostic validation must finish without rotating it so the authentication regression can be attributed correctly. Immediately after that task is complete, rotate the credential as a separate controlled security action and update OBS plus StudioOS secure credential storage atomically. Never print or log the new value, commit it, add it to documentation, or copy it into any provider JSON file.
 
+## Mandatory Twitch stream key rotation follow-up after Task10.1.1
+
+The Twitch stream key was exposed in diagnostic output during the Task10.1.1 read-only OBS investigation, because `GetStreamServiceSettings` returns the configured RTMP stream key in cleartext. Treat that key as compromised.
+
+Requirements:
+
+- Rotate the key in the Twitch dashboard as a separate, explicitly authorized security action. It was deliberately **not** rotated during the live, and rotation is not part of any narration, audibility or Ollama task.
+- Update the corresponding secure runtime configuration in OBS atomically, without printing, logging, documenting or versioning the new value, and without copying it into any provider JSON file.
+- Never paste the key, old or new, into this repository, an issue, a log, a command transcript or chat.
+- Removing it from documentation is not sufficient on its own; rotation is the control that matters.
+
+The same rule applies to any other secret an OBS read-only request can return. Prefer request shapes that avoid secret-bearing fields, and treat captured diagnostic output as sensitive even when it was never intended to be persisted.
+
 ## Social Stream public configuration and OAuth
 
 `studioos.socialstream.json` is public configuration only. It accepts provider enablement, public channel/live identifiers and the YouTube `authMode`; it rejects `usuario`, `senha`, password, Client Secret, access/refresh tokens, authorization codes and cookie/session fields case-insensitively. Rejection is isolated to provider configuration, reports a sanitized reason and must not disclose the value.

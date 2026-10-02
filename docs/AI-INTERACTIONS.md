@@ -55,6 +55,6 @@ O runtime oficial do provider local agora é `gfm-studioos-ollama`, acessado pel
 
 A validação com o Ollama do Windows parado comprovou inferência real via API, sem fallback, e uso `100% GPU` reportado pelo Ollama na RTX 3060. Restart/recriação preservaram o modelo e o segundo provisionamento não baixou novamente. O Compose base mantém fallback CPU; o override `docker-compose.gpu.yml` solicita GPU NVIDIA. Detalhes em [LOCAL-AI-RUNTIME.md](LOCAL-AI-RUNTIME.md).
 
-O E2E de live da Task10 continua sendo a baseline histórica. A repetição YouTube → SSN → Ollama Docker → Piper → OBS está pendente de uma live criada intencionalmente pelo analista; não foi simulada nem declarada como concluída nesta validação de infraestrutura.
+O E2E de live foi repetido no runtime Docker e concluído: mensagens reais `!studio` na source SSN `live_chat` de uma transmissão ao vivo do YouTube geraram resposta real pelo Ollama Docker, TTS Piper real e narração concluída no OBS, e o analista confirmou explicitamente ter ouvido o áudio. Nenhuma dependência do Ollama do Windows, que permaneceu parado. `AutoPlayInteractions` foi desligado após o teste e seu estado final é `false`.
 
 Semântica: `Interaction.Completed` significa que a geração da resposta (AI + TTS) concluiu com sucesso e foi publicada. A reprodução OBS é um lifecycle separado da Narration (`Queued → Started → Completed/Failed`), correlacionado, porém sem acoplamento de domínio; portanto a interação pode aparecer Completed antes do fim do áudio.

@@ -70,4 +70,15 @@ O Ollama para Windows não é necessário para o caminho Compose e pode permanec
 - recuperação restaurou o provider para `Ready`.
 - `AutoPlayInteractions=false`; nenhum TTS/playback/live foi iniciado durante a validação de infraestrutura.
 
-O E2E YouTube -> SSN -> StudioOS -> Ollama Docker -> Piper -> OBS permanece pendente de checkpoint explícito do analista em uma live intencional. Descoberta automática de live e resposta escrita no chat não estão implementadas.
+## Evidência de validação da Task10.1.1 — E2E final de live
+
+- Ollama do Windows parado durante todo o E2E e `localhost:11434` sem listener.
+- Transmissão real do YouTube como fonte de entrada, via SSN `/live_chat`.
+- Duas mensagens reais `!studio` capturadas, normalizadas e decididas como `Respond`.
+- Geração real pelo Ollama Docker; nenhum fallback e nenhuma chamada ao host.
+- Piper real: dois WAV PCM16 mono 22050 Hz válidos e não silenciosos.
+- Narração: `queued=2, started=2, completed=2, failed=0`, playback concluído na source `GFM StudioOS - Narration`.
+- **O analista confirmou explicitamente ter ouvido as respostas de áudio.**
+- `AutoPlayInteractions=false` ao final; nenhum restart, streaming ou gravação alterado.
+
+Conclusão: o E2E YouTube -> SSN -> StudioOS -> Ollama Docker -> Piper -> OBS está **PASS** e audível. O runtime local de IA oficial é exclusivamente o container; o Ollama do Windows permanece parado e não desinstalado. Descoberta automática de live, resposta escrita no chat e voz do chat lida a partir da mensagem continuam não implementadas.

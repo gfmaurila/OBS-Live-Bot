@@ -90,3 +90,23 @@ O teste real detectou a transição controlada `Iniciando -> Finalizando -> Inic
 - Causa raiz comprovada: a credencial OBS WebSocket havia mudado enquanto o StudioOS ainda mantinha/esperava a credencial anterior.
 - Nenhuma rotação foi executada durante o diagnóstico e a credencial do StudioOS não foi alterada.
 - Follow-up obrigatório após a Task09.3.1: rotacionar a credencial exposta e atualizar OBS e armazenamento seguro do StudioOS em conjunto, sem imprimir, registrar, documentar ou versionar o novo valor.
+
+## Dívida técnica do ambiente OBS — registrada na Task10.1.1
+
+Diagnóstico somente leitura, sem nenhuma alteração no OBS, no Ulanzi, no streaming ou na gravação. Estes itens **não** pertencem ao pipeline de narração do StudioOS, **não** bloqueiam o E2E do Ollama Docker e **não** devem ser reparados sem task explícita.
+
+A source `GFM StudioOS - Narration` foi verificada e está correta: `ffmpeg_source` presente e habilitada nas seis cenas, inclusive na cena em programa, `muted=false`, volume 70% (`-3,10 dB`), `MonitorOff`, Track 1. Todas as saídas ativas e a gravação usam a Track 1, portanto a narração está incluída na mixagem de streaming. `MonitorOff` impede apenas o monitoramento local e **não** impede o envio para o stream.
+
+1. **Bindings de captura de processo do Discord obsoletos.** As fontes `discord - geral`, `discord - ets`, `discord - ats` e `discord - latinos - 1/2/3` guardam a assinatura `título:classe:exe` de janelas antigas. O título vivo do Discord não corresponde mais ao armazenado, portanto o bind não voltará a ocorrer. Exige re-seleção explícita de cada janela no OBS.
+2. **Captura de navegador/música aponta para aba inexistente.** `Nagedador-musica` referencia uma aba do Chrome que não existe mais. Mesma causa e mesmo requisito de re-seleção.
+3. **Microfone com GUID de dispositivo ausente.** `microfone` referencia um `device_id` que não está presente entre os dispositivos de áudio atuais; a inicialização falha com `Failed to enumerate device`. Exige re-seleção explícita de dispositivo.
+4. **Captura de áudio de jogo requer revisão separada.** As fontes de áudio de jogo existentes no boot não estão mais presentes na lista de inputs; os jogos aparecem apenas como `game_capture` de vídeo. Requer decisão explícita sobre se o áudio do jogo deve ser capturado.
+5. **Gravação reporta ativa com MKV de 0 bytes.** `GetRecordStatus` reporta `outputActive=true`, porém o arquivo MKV da sessão permanece com 0 bytes por horas, com `obs-ffmpeg-mux` ativo. Requer investigação dedicada; não foi tocada nesta task.
+
+### Origem das falhas de bind
+
+Fontes `wasapi_process_output_capture` do OBS 30+ resolvem o alvo por assinatura de janela e **não re-tentam** quando o aplicativo alvo só aparece depois do startup do OBS. Um bind que falhou no boot permanece morto até re-seleção manual da janela ou reinício do OBS com o aplicativo já em execução. Reiniciar o OBS derrubaria a transmissão ao vivo e, portanto, não é um caminho aceitável durante uma live.
+
+### Nota de interpretação
+
+O `Ulanzi` é um sistema de atalhos/controller de hardware, equivalente a hotkeys que disparam ações no OBS/StudioOS. Ele **não** participa do pipeline de áudio e **não** é a voz do chat. Nenhuma alteração foi aplicada nele. A futura voz do chat será implementada dentro do StudioOS, de forma independente, reutilizando a arquitetura de TTS/narração já existente.

@@ -119,53 +119,77 @@ public sealed class NarrationService : BackgroundService, INarrationService
         lock (_gate) return _recent.TakeLast(Math.Clamp(limit, 1, _options.EventBufferCapacity)).Reverse().ToArray();
     }
 
+    public Task<NarrationEnqueueResult> EnqueueAsync(
+        NarrationAudioArtifact artifact,
+        string correlationId,
+        CancellationToken cancellationToken) =>
+        EnqueueAsync(artifact, correlationId, _options.AssistantVoice, NarrationOrder.Assistant, 0, cancellationToken);
+
     public async Task<NarrationEnqueueResult> EnqueueAsync(
         NarrationAudioArtifact artifact,
         string correlationId,
+        NarrationVoiceRoleOptions role,
+        int orderWithinInteraction,
+        long groupSequence,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var now = _timeProvider.GetUtcNow();
         var id = Guid.NewGuid();
+        var voiceRole = artifact.VoiceRole;
         var validation = _artifactValidator.Validate(artifact, _options.AllowedRuntimeDirectory);
         if (!validation.Valid)
         {
             Interlocked.Increment(ref _failed);
             _lastFailureAtUtc = now;
-            return Reject(id, artifact.InteractionId, correlationId, validation.ErrorCode ?? "NARRATION_AUDIO_INVALID", now);
+            return Reject(id, artifact.InteractionId, correlationId, validation.ErrorCode ?? "NARRATION_AUDIO_INVALID", now,
+                voiceRole: voiceRole, orderWithinInteraction: orderWithinInteraction,
+                groupSequence: groupSequence, voiceId: role.VoiceId);
         }
 
         if (validation.Duration <= TimeSpan.Zero || validation.Duration.TotalSeconds > _options.MaxNarrationSeconds)
         {
-            return Reject(id, artifact.InteractionId, correlationId, "NARRATION_TOO_LONG", now, NarrationStatus.Skipped);
+            return Reject(id, artifact.InteractionId, correlationId, "NARRATION_TOO_LONG", now, NarrationStatus.Skipped,
+                voiceRole, orderWithinInteraction, groupSequence, role.VoiceId);
         }
 
+        // The role's logical volume is resolved once, at enqueue, so playback cannot be influenced by
+        // a later settings change. A null role volume keeps the narration-wide volume in effect.
+        var requestedVolume = role.Volume ?? artifact.Volume;
         var verifiedArtifact = artifact with
         {
             Duration = validation.Duration,
             SampleRate = validation.SampleRate,
             BitDepth = validation.BitDepth,
-            Channels = validation.Channels
+            Channels = validation.Channels,
+            Volume = requestedVolume
         };
         var request = new NarrationRequest(id, artifact.InteractionId, verifiedArtifact, now, 0,
-            string.IsNullOrWhiteSpace(correlationId) ? id.ToString("N") : correlationId);
+            string.IsNullOrWhiteSpace(correlationId) ? id.ToString("N") : correlationId,
+            voiceRole, orderWithinInteraction, groupSequence, requestedVolume, verifiedArtifact.EffectiveArtifactId,
+            role.VoiceId);
         var lease = _leases.Acquire(verifiedArtifact.Path);
         var result = new NarrationResult(id, artifact.InteractionId, NarrationStatus.Queued, null,
-            now, now, 0, request.CorrelationId);
+            now, now, 0, request.CorrelationId, null, voiceRole, orderWithinInteraction, groupSequence,
+            role.VoiceId);
 
         lock (_gate)
         {
             if (!_options.Enabled)
             {
                 lease.Dispose();
-                return RejectLocked(id, artifact.InteractionId, request.CorrelationId, "NARRATION_DISABLED", now);
+                return RejectLocked(id, artifact.InteractionId, request.CorrelationId, "NARRATION_DISABLED", now,
+                    voiceRole: voiceRole, orderWithinInteraction: orderWithinInteraction,
+                    groupSequence: groupSequence, voiceId: role.VoiceId);
             }
 
             if (!_queue.Writer.TryWrite(new QueuedNarration(request, lease)))
             {
                 lease.Dispose();
                 Interlocked.Increment(ref _queueRejected);
-                return RejectLocked(id, artifact.InteractionId, request.CorrelationId, "NARRATION_QUEUE_FULL", now);
+                return RejectLocked(id, artifact.InteractionId, request.CorrelationId, "NARRATION_QUEUE_FULL", now,
+                    voiceRole: voiceRole, orderWithinInteraction: orderWithinInteraction,
+                    groupSequence: groupSequence, voiceId: role.VoiceId);
             }
 
             _queueLength++;
@@ -175,8 +199,9 @@ public sealed class NarrationService : BackgroundService, INarrationService
 
         await PublishTransitionAsync(result, "NarrationQueued", cancellationToken).ConfigureAwait(false);
         _logger.LogInformation(
-            "NARRATION_QUEUED narrationId={NarrationId} interactionId={InteractionId} queueLength={QueueLength} correlationId={CorrelationId}",
-            result.NarrationId, result.InteractionId, GetState().QueueLength, result.CorrelationId);
+            "NARRATION_QUEUED narrationId={NarrationId} interactionId={InteractionId} voiceRole={VoiceRole} orderWithinInteraction={Order} groupSequence={Group} voiceId={VoiceId} volume={Volume} queueLength={QueueLength} correlationId={CorrelationId}",
+            result.NarrationId, result.InteractionId, voiceRole, orderWithinInteraction, groupSequence,
+            role.VoiceId, requestedVolume, GetState().QueueLength, result.CorrelationId);
         return new NarrationEnqueueResult(true, result, null);
     }
 
@@ -217,7 +242,10 @@ public sealed class NarrationService : BackgroundService, INarrationService
         lock (_gate)
         {
             _playbackSnapshot = snapshot;
-            if (snapshot.Volume is { } volume) _volume = volume;
+            // Mute is a single global switch, so it is safe to adopt. Volume is deliberately NOT
+            // adopted: a per-role volume is applied transiently before each item's playback, so
+            // reading it back would overwrite the narration-wide volume and let one role's volume
+            // leak permanently into the next.
             if (snapshot.Muted is { } muted) _muted = muted;
         }
         return snapshot;
@@ -262,17 +290,25 @@ public sealed class NarrationService : BackgroundService, INarrationService
             await TransitionAsync(request, NarrationStatus.Preparing, null, null, stoppingToken).ConfigureAwait(false);
             await _playback.EnsureSourceAsync(_options.SourceName, _options.AllowedRuntimeDirectory, stoppingToken)
                 .ConfigureAwait(false);
-            await _playback.ConfigureAsync(_options.SourceName, GetState().Volume, GetState().Muted, stoppingToken)
+            // Apply this item's own volume immediately before playback. Explicitly re-applying it for
+            // every item is what stops one role's volume from leaking into the next role's playback.
+            var itemVolume = request.Volume ?? GetState().Volume;
+            await _playback.ConfigureAsync(_options.SourceName, itemVolume, GetState().Muted, stoppingToken)
                 .ConfigureAwait(false);
             await _playback.PlayAsync(_options.SourceName, request.AudioArtifact, stoppingToken).ConfigureAwait(false);
+            var playingAt = _timeProvider.GetUtcNow();
             lock (_gate) _current = AddResultLocked(new NarrationResult(request.NarrationId,
                 request.InteractionId, NarrationStatus.Playing, null, request.CreatedAtUtc,
-                _timeProvider.GetUtcNow(), 0, request.CorrelationId));
+                playingAt, 0, request.CorrelationId, null, request.VoiceRole,
+                request.OrderWithinInteraction, request.GroupSequence, request.VoiceId,
+                playingAt, null, playingAt - request.CreatedAtUtc));
             Interlocked.Increment(ref _started);
             await PublishTransitionAsync(_current!, "NarrationStarted", stoppingToken).ConfigureAwait(false);
             _logger.LogInformation(
-                "NARRATION_STARTED narrationId={NarrationId} interactionId={InteractionId} source={Source} correlationId={CorrelationId}",
-                request.NarrationId, request.InteractionId, _options.SourceName, request.CorrelationId);
+                "NARRATION_STARTED narrationId={NarrationId} interactionId={InteractionId} voiceRole={VoiceRole} order={Order} group={Group} volume={Volume} queueWaitMs={QueueWaitMs} source={Source} correlationId={CorrelationId}",
+                request.NarrationId, request.InteractionId, request.VoiceRole, request.OrderWithinInteraction,
+                request.GroupSequence, itemVolume, (playingAt - request.CreatedAtUtc).TotalMilliseconds,
+                _options.SourceName, request.CorrelationId);
 
             var playbackState = await _playback.WaitForCompletionAsync(
                 _options.SourceName,
@@ -282,22 +318,26 @@ public sealed class NarrationService : BackgroundService, INarrationService
             if (playbackState != ObsMediaPlaybackState.Ended)
                 throw new NarrationPlaybackException("NARRATION_PLAYBACK_NOT_COMPLETED");
 
-            var duration = _timeProvider.GetUtcNow() - startedAt;
+            var completedAt = _timeProvider.GetUtcNow();
+            var duration = completedAt - playingAt;
             var completed = new NarrationResult(request.NarrationId, request.InteractionId,
-                NarrationStatus.Completed, null, request.CreatedAtUtc, _timeProvider.GetUtcNow(),
-                0, request.CorrelationId, duration);
+                NarrationStatus.Completed, null, request.CreatedAtUtc, completedAt,
+                0, request.CorrelationId, duration, request.VoiceRole, request.OrderWithinInteraction,
+                request.GroupSequence, request.VoiceId, playingAt, completedAt,
+                playingAt - request.CreatedAtUtc);
             lock (_gate)
             {
                 _current = null;
-                _lastPlaybackAtUtc = _timeProvider.GetUtcNow();
+                _lastPlaybackAtUtc = completedAt;
                 Interlocked.Increment(ref _completed);
                 Interlocked.Add(ref _playbackTicks, duration.Ticks);
                 completed = AddResultLocked(completed);
             }
             await PublishTransitionAsync(completed, "NarrationCompleted", stoppingToken).ConfigureAwait(false);
             _logger.LogInformation(
-                "NARRATION_COMPLETED narrationId={NarrationId} durationMilliseconds={DurationMilliseconds} correlationId={CorrelationId}",
-                request.NarrationId, duration.TotalMilliseconds, request.CorrelationId);
+                "NARRATION_COMPLETED narrationId={NarrationId} voiceRole={VoiceRole} durationMilliseconds={DurationMilliseconds} queueWaitMs={QueueWaitMs} correlationId={CorrelationId}",
+                request.NarrationId, request.VoiceRole, duration.TotalMilliseconds,
+                (playingAt - request.CreatedAtUtc).TotalMilliseconds, request.CorrelationId);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -384,7 +424,8 @@ public sealed class NarrationService : BackgroundService, INarrationService
             }
             result = AddResultLocked(new NarrationResult(request.NarrationId, request.InteractionId,
                 status, errorCode, request.CreatedAtUtc, _timeProvider.GetUtcNow(), 0,
-                request.CorrelationId, playbackDuration));
+                request.CorrelationId, playbackDuration, request.VoiceRole, request.OrderWithinInteraction,
+                request.GroupSequence, request.VoiceId));
         }
 
         var eventName = status switch
@@ -443,7 +484,8 @@ public sealed class NarrationService : BackgroundService, INarrationService
         lock (_gate)
         {
             narrationEvent = new NarrationEvent(Guid.NewGuid(), result.NarrationId, result.InteractionId,
-                eventType, result.ErrorCode, _timeProvider.GetUtcNow(), ++_sequence, result.CorrelationId);
+                eventType, result.ErrorCode, _timeProvider.GetUtcNow(), ++_sequence, result.CorrelationId,
+                result.VoiceRole);
             _events.Add(narrationEvent);
             if (_events.Count > _options.EventBufferCapacity) _events.RemoveAt(0);
         }
@@ -465,9 +507,14 @@ public sealed class NarrationService : BackgroundService, INarrationService
         string correlationId,
         string errorCode,
         DateTimeOffset now,
-        NarrationStatus status = NarrationStatus.Failed)
+        NarrationStatus status = NarrationStatus.Failed,
+        NarrationVoiceRole voiceRole = NarrationVoiceRole.Assistant,
+        int orderWithinInteraction = 0,
+        long groupSequence = 0,
+        string? voiceId = null)
     {
-        lock (_gate) return RejectLocked(id, interactionId, correlationId, errorCode, now, status);
+        lock (_gate) return RejectLocked(id, interactionId, correlationId, errorCode, now, status,
+            voiceRole, orderWithinInteraction, groupSequence, voiceId);
     }
 
     private NarrationEnqueueResult RejectLocked(
@@ -476,10 +523,14 @@ public sealed class NarrationService : BackgroundService, INarrationService
         string correlationId,
         string errorCode,
         DateTimeOffset now,
-        NarrationStatus status = NarrationStatus.Failed)
+        NarrationStatus status = NarrationStatus.Failed,
+        NarrationVoiceRole voiceRole = NarrationVoiceRole.Assistant,
+        int orderWithinInteraction = 0,
+        long groupSequence = 0,
+        string? voiceId = null)
     {
         var result = AddResultLocked(new NarrationResult(id, interactionId, status, errorCode,
-            now, now, 0, correlationId));
+            now, now, 0, correlationId, null, voiceRole, orderWithinInteraction, groupSequence, voiceId));
         return new NarrationEnqueueResult(false, result, errorCode);
     }
 

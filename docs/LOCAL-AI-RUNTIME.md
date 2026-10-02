@@ -82,3 +82,13 @@ O Ollama para Windows não é necessário para o caminho Compose e pode permanec
 - `AutoPlayInteractions=false` ao final; nenhum restart, streaming ou gravação alterado.
 
 Conclusão: o E2E YouTube -> SSN -> StudioOS -> Ollama Docker -> Piper -> OBS está **PASS** e audível. O runtime local de IA oficial é exclusivamente o container; o Ollama do Windows permanece parado e não desinstalado. Descoberta automática de live, resposta escrita no chat e voz do chat lida a partir da mensagem continuam não implementadas.
+
+## OBS-LIVE-BOT-10.2 — impacto no runtime de IA
+
+A Task 10.2 **não alterou a topologia, o runtime, o modelo, as variáveis de ambiente nem o docker-compose**. O endpoint de produção continua sendo `http://ollama:11434`, o modelo continua sendo `qwen3:4b-instruct-2507-q4_K_M` no volume `gfm-studioos-ollama-models`, e a API continua não dependendo da prontidão do Ollama para iniciar. A instalação do Ollama no Windows permaneceu presente, porém parada, e não foi desinstalada.
+
+A observação relevante é de acoplamento, não de infraestrutura: a voz `Chat` é uma função determinística do evento de chat e **não consulta o modelo**. Ela é sintetizada em paralelo com a chamada de IA e independe dela. Portanto a voz do chat não introduz dependência, latência ou custo de inferência, e a degradação do Ollama continua isolada exatamente como antes: a IA falha, o chat ainda fala, e a voz do chat nunca é bloqueada por indisponibilidade do modelo.
+
+A única alteração de configuração relacionada à voz é `Interactions:Tts:VoicesDirectory`, que aponta para `/opt/tts-engine/voices` dentro do bind mount já existente e somente-leitura `./data/runtime/tts-engine:/opt/tts-engine:ro`. Nenhuma imagem, volume, container ou serviço novo foi criado; o segundo modelo de voz (`pt_BR-jeff-medium`) simplesmente ocupa o mesmo diretório de vozes que o modelo já existente.
+
+Nenhuma execução do Ollama foi feita nesta fase e a reprodução audível das duas vozes não foi validada.

@@ -20,7 +20,9 @@ public sealed class SetNarrationVolumeCommandValidator : AbstractValidator<SetNa
     }
 }
 
-public sealed class SetNarrationVolumeCommandHandler(INarrationService narration)
+public sealed class SetNarrationVolumeCommandHandler(
+    INarrationService narration,
+    IOptions<NarrationOptions> options)
     : IRequestHandler<SetNarrationVolumeCommand, Result<NarrationStateResponse>>
 {
     public async Task<Result<NarrationStateResponse>> Handle(
@@ -28,6 +30,6 @@ public sealed class SetNarrationVolumeCommandHandler(INarrationService narration
         CancellationToken cancellationToken)
     {
         var state = await narration.SetVolumeAsync(request.Volume, cancellationToken).ConfigureAwait(false);
-        return Result.Success(NarrationMappings.Map(state));
+        return Result.Success(NarrationMappings.Map(state, options.Value));
     }
 }

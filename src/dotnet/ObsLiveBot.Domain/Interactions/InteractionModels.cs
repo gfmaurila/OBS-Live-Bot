@@ -71,7 +71,15 @@ public sealed record TextToSpeechRequest(
     string Text,
     string? Voice,
     string Language,
-    string CorrelationId);
+    string CorrelationId,
+    Guid ArtifactId = default)
+{
+    /// <summary>
+    /// Identity of the WAV this request produces. An interaction can request two syntheses (chat and
+    /// assistant), so the artifact identity must not be the interaction identity.
+    /// </summary>
+    public Guid EffectiveArtifactId => ArtifactId == Guid.Empty ? InteractionId : ArtifactId;
+}
 
 public sealed record TextToSpeechResult(
     bool Success,
@@ -86,7 +94,37 @@ public sealed record TextToSpeechResult(
     TimeSpan? AudioDuration = null,
     int? SampleRate = null,
     int? BitDepth = null,
-    int? Channels = null);
+    int? Channels = null,
+    Guid ArtifactId = default);
+
+/// <summary>
+/// Deterministic text prepared to be read aloud for an incoming chat message. The message itself is
+/// never rewritten by AI; only trigger removal and deterministic sanitization are applied.
+/// </summary>
+public sealed record ChatSpeechResult(
+    bool Success,
+    string? Text,
+    string? ErrorCode,
+    string? VoiceId = null,
+    int SourceCharacterCount = 0,
+    bool Truncated = false,
+    bool UrlsReplaced = false);
+
+/// <summary>
+/// Measured audio-path timings for one interaction. Recorded so latency can be attributed to
+/// speech building, each TTS synthesis, AI generation, queue waiting and OBS playback rather than
+/// guessed. All values are wall-clock milliseconds.
+/// </summary>
+public sealed record InteractionAudioLatency(
+    long? SpeechBuildMs = null,
+    long? ChatTtsMs = null,
+    long? AiMs = null,
+    long? AssistantTtsMs = null,
+    long? AiStartedAfterAcceptedMs = null,
+    long? ChatTtsStartedAfterAcceptedMs = null,
+    long? AcceptedToAiReadyMs = null,
+    long? AcceptedToAssistantReadyMs = null,
+    long? TotalMs = null);
 
 public sealed record InteractionResult(
     Guid InteractionId,
@@ -116,7 +154,24 @@ public sealed record InteractionResult(
     TimeSpan? AudioDuration = null,
     int? SampleRate = null,
     int? BitDepth = null,
-    int? Channels = null);
+    int? Channels = null,
+    // Dual voice: the Chat role artifact that reads the incoming message aloud. The pre-existing
+    // Tts*/Audio* fields above continue to describe the Assistant role so existing clients and
+    // stored results keep their meaning.
+    string? ChatSpeechText = null,
+    bool? ChatTtsSuccess = null,
+    string? ChatTtsErrorCode = null,
+    string? ChatTtsVoice = null,
+    string? ChatAudioPath = null,
+    string? ChatAudioFormat = null,
+    TimeSpan? ChatAudioDuration = null,
+    Guid ChatArtifactId = default,
+    int? ChatSampleRate = null,
+    int? ChatBitDepth = null,
+    int? ChatChannels = null,
+    string? ChatNarrationId = null,
+    string? AssistantNarrationId = null,
+    InteractionAudioLatency? AudioLatency = null);
 
 public sealed record InteractionStateSnapshot(
     string Status,

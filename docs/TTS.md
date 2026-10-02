@@ -40,9 +40,35 @@ O TTS só é chamado para `Voice` e `TextAndVoice`. `Text` não chama TTS; `Igno
 - Falhas de TTS são isoladas e registradas como resultado explícito sem derrubar os demais subsistemas.
 - Ao concluir a Task 07, **REAL LOCAL TTS: YES; OBS AUDIO PLAYBACK: NOT YET**: aquela task não reproduziu nem roteou áudio. A Task 08 acrescentou a source de narração dedicada e confirmou playback real no OBS, descrito em [`NARRATION.md`](NARRATION.md); isso não habilita autoplay de chat nem monitoramento local.
 
+## Duas vozes — OBS-LIVE-BOT-10.2
+
+Uma interação agora pode produzir dois clipes, e cada um recebe seu próprio identificador de artefato e seu próprio arquivo WAV. O papel é semântico e nunca é inferido pelo nome do arquivo do modelo:
+
+| Papel | Texto | Voz | Ordem |
+|---|---|---|---|
+| `Chat` | mensagem determinística do chat, sem o trigger | `pt_BR-jeff-medium` | 1 |
+| `Assistant` | resposta gerada pelo modelo local | `pt_BR-faber-medium` | 2 |
+
+Os dois clipes de uma mesma interação recebem IDs de artefato distintos por construção: o papel é combinado nos próprios bits do GUID, e não anexado fora dele. Sem essa separação os dois papéis apontariam para o mesmo WAV e um sobrescreveria o outro.
+
+`PiperVoiceCatalog` resolve a voz solicitada por papel dentro de `Interactions:Tts:VoicesDirectory`, exige que o modelo e sua configuração existam e rejeita identificadores com separadores de caminho, extensões ou outros caracteres inseguros. O Piper deriva a configuração da voz como o caminho do modelo mais `.json`, portanto o arquivo real de configuração é `<voz>.onnx.json`; o provider usa esse padrão adjacente em vez de passar `--config`, o que preserva a compatibilidade de argumentos já validada.
+
+As requisições concorrentes de TTS continuam limitadas pela configuração existente (concorrência 1, fila bounded de 2, espera máxima de 2 s, timeout de 20 s). A voz do `Chat` é resolvida uma vez por configuração e pode receber volume lógico próprio, aplicado imediatamente antes da reprodução daquele papel.
+
+O texto recebido do chat nunca é concatenado em argumentos de processo: ele continua sendo enviado exclusivamente por stdin.
+
+### Modelo de voz Chat
+
+`pt_BR-jeff-medium`, português brasileiro, qualidade medium, 22.050 Hz, 62.950.044 bytes. SHA-256 do modelo: `3a6f4c46355813c2b7bbc4d16b6d13d60ed72074b952a393baace82a7d0c94b5`. Origem `rhasspy/piper-voices`, diretório `pt/pt_BR/jeff/medium`; o model card identifica o dataset como **CC0** e o repositório como **MIT**. A redistribuição do arquivo de modelo permanece **UNKNOWN** pelo mesmo motivo de Faber: a licença do dataset CC0 não resolve, sozinha, todos os direitos sobre o modelo derivado. O modelo não é versionado no Git e deve ser provisionado separadamente.
+
+### Estado de validação
+
+O suporte às duas vozes está implementado e coberto por testes automatizados (414 testes unitários; build Release com 0 erros e 0 avisos). As duas vozes foram confirmadas como aceitas pelo Piper 1.2.0 em execução local sem emitir áudio para a transmissão, e os WAVs de sondagem foram removidos. **A reprodução audível das duas vozes no OBS NÃO foi realizada**: `Narration:AutoPlayInteractions` foi mantido em `false` nesta fase.
+
 ## Futuro, não implementado
 
 - distribuição licenciada do runtime/voz;
 - outras vozes e engine Windows alternativa;
+- reprodução audível das duas vozes, que depende de autorização explícita do analista e de `AutoPlayInteractions=true`;
 - habilitação deliberada de autoplay de interações (desativado por padrão; configuração posterior);
 - provider cloud opcional.

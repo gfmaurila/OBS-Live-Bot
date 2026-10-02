@@ -544,11 +544,18 @@ public sealed class InteractionCoreTests
         FakeTtsProvider? fallbackTts = null,
         bool allowDevelopmentTtsFallback = false,
         IInteractionEventPublisher? eventPublisher = null,
-        RecordingPublisher? mediator = null)
+        RecordingPublisher? mediator = null,
+        Action<NarrationOptions>? configureNarration = null,
+        RecordingDualVoiceCoordinator? coordinator = null)
     {
         var value = new InteractionOptions();
         configure?.Invoke(value);
         var options = Options.Create(value);
+        // Autoplay defaults to off here so the existing interaction-pipeline tests keep asserting a
+        // single assistant synthesis. Dual voice tests turn it on explicitly.
+        var narrationValue = new NarrationOptions { Enabled = true, AutoPlayInteractions = false };
+        configureNarration?.Invoke(narrationValue);
+        var narrationOptions = Options.Create(narrationValue);
         var time = new ManualTimeProvider();
         var buffer = new InteractionBuffer(options);
         ai ??= new FakeAiProvider(request => new AiInteractionResponse(
@@ -560,19 +567,23 @@ public sealed class InteractionCoreTests
         var registry = new FakeRegistry(
             ai, tts, fallbackAi, allowDevelopmentFallback,
             fallbackTts, allowDevelopmentTtsFallback);
+        coordinator ??= new RecordingDualVoiceCoordinator();
         var orchestrator = new InteractionOrchestrator(
             new InteractionDecisionPolicy(options, time),
             new InteractionCooldownTracker(options, time),
             new InteractionContextBuilder(options, buffer),
+            new ChatSpeechBuilder(options, narrationOptions),
+            coordinator,
             registry,
             new AiResponseSanitizer(options),
             buffer,
             eventPublisher ?? new RecordingInteractionPublisher(),
             mediator ?? new RecordingPublisher(),
             options,
+            narrationOptions,
             time,
             NullLogger<InteractionOrchestrator>.Instance);
-        return new TestHarness(orchestrator, buffer, ai, tts, time);
+        return new TestHarness(orchestrator, buffer, ai, tts, time, coordinator);
     }
 
     private static LiveChatEvent Event(
@@ -604,7 +615,8 @@ public sealed class InteractionCoreTests
         InteractionBuffer Buffer,
         FakeAiProvider Ai,
         FakeTtsProvider Tts,
-        ManualTimeProvider Time);
+        ManualTimeProvider Time,
+        RecordingDualVoiceCoordinator Coordinator);
 
     private sealed class FakeAiProvider(
         Func<AiInteractionRequest, AiInteractionResponse> response,

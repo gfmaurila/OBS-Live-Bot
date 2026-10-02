@@ -112,10 +112,10 @@ public sealed class TtsAudioStore(
 
     public string Root => _root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-    public string GetOutputPath(Guid interactionId)
+    public string GetOutputPath(Guid artifactId)
     {
         Directory.CreateDirectory(Root);
-        var path = Path.GetFullPath(Path.Combine(Root, $"{interactionId:N}.wav"));
+        var path = Path.GetFullPath(Path.Combine(Root, $"{artifactId:N}.wav"));
         EnsureContained(path);
         return path;
     }
@@ -155,7 +155,7 @@ public sealed class TtsAudioStore(
             if (!string.Equals(allowedRoot, _root, PathComparison))
                 return new NarrationArtifactValidation(false, "NARRATION_RUNTIME_DIRECTORY_MISMATCH", default, 0, 0, 0);
 
-            var expected = Path.GetFullPath(Path.Combine(Root, $"{artifact.InteractionId:N}.wav"));
+            var expected = Path.GetFullPath(Path.Combine(Root, $"{artifact.EffectiveArtifactId:N}.wav"));
             var supplied = Path.GetFullPath(artifact.Path);
             EnsureContained(supplied);
             if (!string.Equals(expected, supplied, PathComparison) ||
@@ -260,6 +260,7 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
     private readonly PiperTtsOptions _options;
     private readonly ITtsProcessRunner _runner;
     private readonly TtsAudioStore _audioStore;
+    private readonly PiperVoiceCatalog _voices;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<PiperTextToSpeechProvider> _logger;
     private readonly SemaphoreSlim _concurrency;
@@ -278,12 +279,14 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
         IOptions<InteractionOptions> options,
         ITtsProcessRunner runner,
         TtsAudioStore audioStore,
+        PiperVoiceCatalog voices,
         TimeProvider timeProvider,
         ILogger<PiperTextToSpeechProvider> logger)
     {
         _options = options.Value.Tts;
         _runner = runner;
         _audioStore = audioStore;
+        _voices = voices;
         _timeProvider = timeProvider;
         _logger = logger;
         _concurrency = new SemaphoreSlim(_options.MaxConcurrentRequests, _options.MaxConcurrentRequests);
@@ -328,13 +331,18 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
         if (!await CheckAvailabilityAsync(cancellationToken).ConfigureAwait(false))
             return Failure(request, "TTS_UNAVAILABLE");
 
+        // Resolve the requested voice before taking a slot, so an unknown voice fails fast and cheaply
+        // instead of occupying the single Piper process slot.
+        var voice = _voices.Resolve(request.Voice);
+        if (voice is null) return Failure(request, "TTS_VOICE_UNAVAILABLE", voiceId: request.Voice);
+
         var entered = await _concurrency.WaitAsync(0, cancellationToken).ConfigureAwait(false);
         if (!entered)
         {
             if (Interlocked.Increment(ref _pendingRequests) > _options.MaxQueuedRequests)
             {
                 Interlocked.Decrement(ref _pendingRequests);
-                return Failure(request, "TTS_BUSY", busy: true);
+                return Failure(request, "TTS_BUSY", busy: true, voiceId: voice.VoiceId);
             }
 
             try
@@ -349,15 +357,18 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
             }
         }
 
-        if (!entered) return Failure(request, "TTS_BUSY", busy: true);
+        if (!entered) return Failure(request, "TTS_BUSY", busy: true, voiceId: voice.VoiceId);
         string? outputPath = null;
         try
         {
             _audioStore.Cleanup(reserveSlots: 1);
-            outputPath = _audioStore.GetOutputPath(request.InteractionId);
+            // Keyed by artifact, not interaction: one interaction now produces two distinct WAVs.
+            outputPath = _audioStore.GetOutputPath(request.EffectiveArtifactId);
             var spec = new TtsProcessSpec(
                 _options.ExecutablePath,
-                ["--model", _options.ModelPath, "--output_file", outputPath],
+                // Piper derives the .json config from the model path; the catalog only ever resolves a
+                // voice whose .onnx and .json sit together, so the derived path is always correct.
+                ["--model", voice.ModelPath, "--output_file", outputPath],
                 request.Text,
                 TimeSpan.FromSeconds(_options.TimeoutSeconds));
             var execution = await _runner.RunAsync(spec, cancellationToken).ConfigureAwait(false);
@@ -365,20 +376,20 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
             {
                 Interlocked.Increment(ref _timeouts);
                 DeleteSafely(outputPath);
-                return Failure(request, "TTS_TIMEOUT", execution.Duration);
+                return Failure(request, "TTS_TIMEOUT", execution.Duration, voiceId: voice.VoiceId);
             }
 
             if (execution.ExitCode != 0)
             {
                 DeleteSafely(outputPath);
-                return Failure(request, "TTS_ENGINE_FAILED", execution.Duration);
+                return Failure(request, "TTS_ENGINE_FAILED", execution.Duration, voiceId: voice.VoiceId);
             }
 
             var audio = _audioStore.ValidateWav(outputPath);
             if (audio is null)
             {
                 DeleteSafely(outputPath);
-                return Failure(request, "TTS_INVALID_AUDIO", execution.Duration);
+                return Failure(request, "TTS_INVALID_AUDIO", execution.Duration, voiceId: voice.VoiceId);
             }
 
             SetAvailability(true);
@@ -386,10 +397,13 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
             Interlocked.Add(ref _totalDurationTicks, execution.Duration.Ticks);
             _lastSuccessAtUtc = _timeProvider.GetUtcNow();
             _audioStore.Cleanup();
+            _logger.LogInformation(
+                "TTS_SYNTHESIZED artifactId={ArtifactId} voice={Voice} audioMilliseconds={AudioMilliseconds}",
+                request.EffectiveArtifactId, voice.VoiceId, audio.Duration.TotalMilliseconds);
             return new TextToSpeechResult(
                 true, Name, AudioFormat, outputPath, execution.Duration, null,
-                request.CorrelationId, false, VoiceName, audio.Duration,
-                audio.SampleRate, audio.BitDepth, audio.Channels);
+                request.CorrelationId, false, voice.VoiceId, audio.Duration,
+                audio.SampleRate, audio.BitDepth, audio.Channels, request.EffectiveArtifactId);
         }
         catch (OperationCanceledException)
         {
@@ -401,8 +415,8 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
             if (outputPath is not null) DeleteSafely(outputPath);
             _logger.LogWarning(
                 "TTS_PIPER_FAILED provider={Provider} voice={Voice} errorType={ErrorType}",
-                Name, VoiceName, exception.GetType().Name);
-            return Failure(request, "TTS_RUNTIME_ERROR");
+                Name, voice.VoiceId, exception.GetType().Name);
+            return Failure(request, "TTS_RUNTIME_ERROR", voiceId: voice.VoiceId);
         }
         finally
         {
@@ -419,14 +433,16 @@ public sealed class PiperTextToSpeechProvider : ITextToSpeechProvider
         TextToSpeechRequest request,
         string errorCode,
         TimeSpan? duration = null,
-        bool busy = false)
+        bool busy = false,
+        string? voiceId = null)
     {
         Interlocked.Increment(ref _failures);
         if (busy) Interlocked.Increment(ref _busyRejections);
         _lastFailureAtUtc = _timeProvider.GetUtcNow();
         return new TextToSpeechResult(
             false, Name, AudioFormat, null, duration ?? TimeSpan.Zero, errorCode,
-            request.CorrelationId, false, VoiceName);
+            request.CorrelationId, false,
+            string.IsNullOrWhiteSpace(voiceId) ? _voices.DefaultVoice : voiceId);
     }
 
     private void DeleteSafely(string path)

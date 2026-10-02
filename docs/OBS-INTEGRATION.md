@@ -99,6 +99,16 @@ O worker reage a três-fontes: no startup, para convergir um restart do StudioOS
 
 Validação em live real, sem interromper a transmissão: o estado do OBS permaneceu `Connected`, cena em programa `Iniciando`, `streaming=true` e `recording=true` durante toda a execução, incluindo a recriação do container da API. As tentativas de descoberta avançaram com o tick, sem churn de fonte e sem duplicata.
 
+## OBS-LIVE-BOT-10.2 — duas vozes, nenhuma mudança no OBS
+
+A Task 10.2 não alterou nada no OBS. Ela não adicionou source, não modificou cena, filtro, track, monitoring, volume, mute nem encoder, e não iniciou streaming nem gravação.
+
+A única observação relevante para a integração com o OBS é de arquitetura: as duas vozes de uma interação **não** são duas sources. `Chat` e `Assistant` são dois itens da mesma fila `GFM StudioOS - Narration`, entregados pelo `DualVoiceNarrationCoordinator` na ordem `Chat` depois de `Assistant`. Como a fila continua sendo um FIFO bounded com um único leitor e `MaxConcurrentPlayback=1`, a serialização estrita e a proibição de sobreposição permanecem garantidas pelo mesmo mecanismo já validado na Task 08. Tocar duas vozes simultâneas exigiria uma segunda source e continua fora de escopo.
+
+A ordem é garantida na aplicação, não no OBS: o Media Source toca um arquivo por vez, e quem decide qual arquivo entra depois é o coordenador. Role order, `orderWithinInteraction` e `groupSequence` ficam expostos em `GET /api/narration/recent` para que a ordenação seja verificável após um teste autorizado.
+
+Como o áudio continua restrito a `MonitorOff` na Track 1, a reprodução das duas vozes não monitora no dispositivo local. `Narration:AutoPlayInteractions` permanece `false` e a reprodução audível das duas vozes **não** foi realizada nesta fase.
+
 ## Dívida técnica do ambiente OBS — registrada na Task10.1.1
 
 Diagnóstico somente leitura, sem nenhuma alteração no OBS, no Ulanzi, no streaming ou na gravação. Estes itens **não** pertencem ao pipeline de narração do StudioOS, **não** bloqueiam o E2E do Ollama Docker e **não** devem ser reparados sem task explícita.

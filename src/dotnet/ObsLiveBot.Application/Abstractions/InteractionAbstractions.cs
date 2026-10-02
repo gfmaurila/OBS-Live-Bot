@@ -38,9 +38,18 @@ public sealed class InteractionOptions
 
 public sealed class PiperTtsOptions
 {
+    public const string SectionName = "Tts";
     public string ExecutablePath { get; set; } = "/opt/tts-engine/piper/piper";
     public string ModelPath { get; set; } = "/opt/tts-engine/voices/pt_BR-faber-medium.onnx";
     public string Voice { get; set; } = "pt_BR-faber-medium";
+
+    /// <summary>
+    /// Directory containing the .onnx voice models a request is allowed to select from. A request may
+    /// only name a voice that already exists in this directory, which keeps the set of executable
+    /// inputs fixed and prevents a voice id from being used to reach an arbitrary path.
+    /// </summary>
+    public string VoicesDirectory { get; set; } = "/opt/tts-engine/voices";
+
     public string OutputDirectory { get; set; } = "/app/data/runtime/tts";
     public int TimeoutSeconds { get; set; } = 20;
     public int MaxInputCharacters { get; set; } = 500;
@@ -70,6 +79,11 @@ public interface IInteractionOrchestrator
         LiveChatEvent chatEvent,
         InteractionResponseMode? requestedMode,
         CancellationToken cancellationToken);
+}
+
+public interface IChatSpeechBuilder
+{
+    ChatSpeechResult Build(LiveChatEvent chatEvent, InteractionDecision decision);
 }
 
 public interface IInteractionDecisionPolicy

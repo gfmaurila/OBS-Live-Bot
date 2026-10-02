@@ -70,3 +70,70 @@ Before changing OBS, a timestamped safety package was written outside the reposi
 The one controlled Development smoke invoked the existing `EnsureSourceAsync` through the narration test endpoint. OBS now has exactly one `GFM StudioOS - Narration` input of kind `ffmpeg_source`, attached once to each of the six existing `ETS` scenes (`Iniciando`, `Jogando - ETS`, `Já Volto`, `Finalizando`, `Jogando - ATS`, `Jogo`). No scenes or unrelated sources were recreated or modified. Routing is Track 1 only and `MonitorOff`. Mute→unmute and volume 35%→70% were validated through source-local APIs; the final source is unmuted at 70%.
 
 Piper (`pt_BR-faber-medium`) produced a real 2.59-second WAV for “Teste de narração do GFM StudioOS.” The one narration moved through `Queued → Preparing → Started → Completed` (OBS Media Source reported playback start and end). Narration health is `Ready`; the API recent buffer has one completed manual test with no failures. No public stream or recording was started. `AutoPlayInteractions=false`; prior chat events remain input-only and produced zero automatic AI, TTS or narration. Task09.4.1 remains PASS and its Twitch/YouTube/Kick validation and secure YouTube session were preserved.
+
+## Dual voice narration — OBS-LIVE-BOT-10.2
+
+### Implemented
+
+One interaction now produces two narrations instead of one. The roles are semantic and are never inferred from a voice filename or from a perceived gender:
+
+| Role | Purpose | Voice | Order |
+|---|---|---|---|
+| `Chat` | Deterministic repeat of the accepted viewer message, trigger removed | `pt_BR-jeff-medium` | 1 |
+| `Assistant` | The generated reply from the local model | `pt_BR-faber-medium` | 2 |
+
+The chat clip is a pure function of the chat event: it never consults the model. It is built and its synthesis started **before** the AI call, so the viewer's message is heard without waiting for the reply. The reply synthesis starts as soon as the sanitized text exists, and the group is handed to the narrator with that synthesis still in flight, so playback overlaps synthesis instead of waiting for it.
+
+The spoken chat text is deterministic: the trigger is removed using the same rule the trigger check uses, the optional `"{username} disse: {message}"` prefix is applied, URLs are replaced with `"link"`, whitespace and control characters are normalized, punctuation is collapsed, the body is bounded in length, and empty speech is rejected.
+
+### Why a coordinator exists
+
+The two clips of one interaction are produced at different times and interactions overlap, so a plain FIFO would allow `A chat, B chat, A assistant`. `DualVoiceNarrationCoordinator` assigns each interaction a monotonically increasing group sequence and admits groups in that order, which yields `A chat, A assistant, B chat, B assistant`.
+
+Ordering key: a group is ordered by the moment its reply text became available. A slow reply is therefore spoken after a faster reply that arrived later, but its own chat clip is never delayed by it.
+
+The coordinator adds ordering, not a second audio system. The narration queue is still the single bounded FIFO with a single reader, and playback is still strictly serial, so two clips can never sound at the same time. Admission is bounded by `MaxPendingGroups` (8); a newcomer beyond that limit is rejected with `COORDINATOR_SATURATED` rather than buffered.
+
+### Failure isolation
+
+| Failure | Result |
+|---|---|
+| Chat synthesis fails or throws | Assistant reply still speaks |
+| AI fails, reply rejected, or reply cannot be voiced | Chat clip still speaks |
+| Narrator rejects an item or throws | Interaction still completes; the group does not stall the groups behind it |
+| Narrator never returns | Interaction is not blocked; narration is downstream of the reply |
+
+A role reaches the queue only when its audio actually exists. A failed, canceled, or missing role is skipped rather than propagated.
+
+### Configuration
+
+| Setting | Default | Notes |
+|---|---|---|
+| `Narration:Enabled` | `true` | |
+| `Narration:AutoPlayInteractions` | `false` | Must stay `false` until audible playback is authorized |
+| `Narration:ChatVoice:Enabled` | `true` | Disabling it must never silence the assistant |
+| `Narration:ChatVoice:VoiceId` | `pt_BR-jeff-medium` | |
+| `Narration:ChatVoice:Volume` | `100` | Logical, applied immediately before that role plays |
+| `Narration:ChatVoice:SpeakUserName` | `true` | |
+| `Narration:ChatVoice:UserNameFormat` | `{username} disse: {message}` | Only `{username}` and `{message}` are valid tokens |
+| `Narration:ChatVoice:MaxMessageCharacters` | `240` | |
+| `Narration:AssistantVoice:Enabled` | `true` | |
+| `Narration:AssistantVoice:VoiceId` | `pt_BR-faber-medium` | Empty falls back to the pre-existing `Interactions:Tts:Voice` |
+| `Narration:AssistantVoice:Volume` | `90` | |
+| `Interactions:Tts:VoicesDirectory` | `/opt/tts-engine/voices` | Where per-role models and their `.onnx.json` configs are resolved |
+
+Role volume is logical: it is applied to the item immediately before that role plays and is never adopted as the narration-wide volume, so the roles can be balanced independently without feedback between the OBS source volume and the item volume.
+
+Piper derives a voice's config file as the model path plus `.json`, so the real config file of a voice is `<voice>.onnx.json`. The catalog refuses voice ids containing path separators, `.` or other unsafe characters, and requires both the model and its config to exist under `VoicesDirectory`.
+
+### API
+
+`GET /api/narration/state` now includes a `voices` array in playback order with `role`, `enabled`, `voiceId`, `volume`, and the chat `userNameFormat`, so the configured roles can be verified without reading the configuration file or the model filenames. `GET /api/narration/recent` items now carry `voiceRole`, `orderWithinInteraction`, and `groupSequence`, which is what makes the two-voice ordering verifiable after a test.
+
+### OBS impact
+
+None. The same single `GFM StudioOS - Narration` source, `TrackIndex=1`, and `MonitorOff` are used, and this task changed no OBS setting, scene, or input. Two voices are two queue items played strictly one after the other, never two sources.
+
+### Validation status of this task
+
+Implemented and covered by automated tests: 414 unit tests pass and the Release build reports 0 errors and 0 warnings. **Audible dual voice playback has NOT been performed.** This phase deliberately kept `Narration:AutoPlayInteractions=false`, produced no audible output, and changed no OBS configuration. See [TTS.md](TTS.md) for the two voice models and their licensing status.

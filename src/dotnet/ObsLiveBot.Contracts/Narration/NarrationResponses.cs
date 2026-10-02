@@ -1,5 +1,16 @@
 namespace ObsLiveBot.Contracts.Narration;
 
+/// <summary>
+/// One configured narration voice role. The role is semantic and never inferred from the voice file:
+/// Chat is the deterministic repeat of the viewer message, Assistant is the generated reply.
+/// </summary>
+public sealed record NarrationVoiceRoleResponse(
+    string Role,
+    bool Enabled,
+    string VoiceId,
+    double? Volume,
+    string UserNameFormat);
+
 public sealed record NarrationStateResponse(
     bool Enabled,
     bool AutoPlayInteractions,
@@ -21,7 +32,8 @@ public sealed record NarrationStateResponse(
     long QueueRejected,
     double? AveragePlaybackDurationMilliseconds,
     DateTimeOffset? LastPlaybackAtUtc,
-    DateTimeOffset? LastFailureAtUtc);
+    DateTimeOffset? LastFailureAtUtc,
+    IReadOnlyList<NarrationVoiceRoleResponse> Voices);
 
 public sealed record NarrationResultResponse(
     Guid NarrationId,
@@ -32,7 +44,10 @@ public sealed record NarrationResultResponse(
     DateTimeOffset UpdatedAtUtc,
     long Sequence,
     string CorrelationId,
-    double? PlaybackDurationMilliseconds);
+    double? PlaybackDurationMilliseconds,
+    string? VoiceRole,
+    int? OrderWithinInteraction,
+    long? GroupSequence);
 
 public sealed record NarrationEventResponse(
     Guid EventId,

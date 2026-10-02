@@ -293,14 +293,15 @@ public sealed class PiperTextToSpeechProviderTests
         configure?.Invoke(options);
         Directory.CreateDirectory(Path.GetDirectoryName(options.Tts.ExecutablePath)!);
         File.WriteAllBytes(options.Tts.ExecutablePath, [1]);
-        Directory.CreateDirectory(Path.GetDirectoryName(options.Tts.ModelPath)!);
+        Directory.CreateDirectory(options.Tts.VoicesDirectory);
         File.WriteAllBytes(options.Tts.ModelPath, [1]);
         File.WriteAllText(options.Tts.ModelPath + ".json", "{}");
         var wrapped = Options.Create(options);
         var runner = new FakeRunner(callback);
         var store = new TtsAudioStore(wrapped, TimeProvider.System);
+        var catalog = new PiperVoiceCatalog(wrapped, NullLogger<PiperVoiceCatalog>.Instance);
         var provider = new PiperTextToSpeechProvider(
-            wrapped, runner, store, TimeProvider.System,
+            wrapped, runner, store, catalog, TimeProvider.System,
             NullLogger<PiperTextToSpeechProvider>.Instance);
         return new TestContext(temp, options, runner, provider);
     }
@@ -316,6 +317,7 @@ public sealed class PiperTextToSpeechProviderTests
             {
                 ExecutablePath = Path.Combine(root, "engine", "piper"),
                 ModelPath = Path.Combine(root, "models", "pt_BR-faber-medium.onnx"),
+                VoicesDirectory = Path.Combine(root, "models"),
                 OutputDirectory = outputDirectory,
                 Voice = "pt_BR-faber-medium",
                 TimeoutSeconds = 5,

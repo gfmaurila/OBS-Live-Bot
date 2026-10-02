@@ -191,7 +191,9 @@ public static class DependencyInjection
         services.AddSingleton<IInteractionCooldownTracker, InteractionCooldownTracker>();
         services.AddSingleton<IInteractionDecisionPolicy, InteractionDecisionPolicy>();
         services.AddSingleton<IInteractionContextBuilder, InteractionContextBuilder>();
+        services.AddSingleton<IChatSpeechBuilder, ChatSpeechBuilder>();
         services.AddSingleton<IAiResponseSanitizer, AiResponseSanitizer>();
+        services.AddSingleton<IDualVoiceNarrationCoordinator, DualVoiceNarrationCoordinator>();
         services.AddSingleton<IInteractionOrchestrator, InteractionOrchestrator>();
         services.AddSingleton<InteractionWorkQueue>();
         services.AddSingleton<IInteractionWorkQueue>(provider => provider.GetRequiredService<InteractionWorkQueue>());
@@ -213,6 +215,7 @@ public static class DependencyInjection
         services.AddSingleton<ITextToSpeechProvider, DevelopmentTextToSpeechProvider>();
         services.AddSingleton<ITtsProcessRunner, TtsProcessRunner>();
         services.AddSingleton<TtsAudioStore>();
+        services.AddSingleton<PiperVoiceCatalog>();
         services.AddSingleton<ITextToSpeechProvider, PiperTextToSpeechProvider>();
         services.AddSingleton<IInteractionProviderRegistry, InteractionProviderRegistry>();
         services.AddSingleton<IInteractionEventPublisher, NoOpInteractionEventPublisher>();

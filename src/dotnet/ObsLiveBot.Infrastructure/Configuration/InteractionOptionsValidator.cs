@@ -79,6 +79,8 @@ public sealed class InteractionOptionsValidator : IValidateOptions<InteractionOp
             failures.Add("Interactions:Tts:MaxQueuedRequests must be between 0 and 100.");
         if (options.Tts.QueueWaitTimeoutSeconds is < 0 or > 60)
             failures.Add("Interactions:Tts:QueueWaitTimeoutSeconds must be between 0 and 60.");
+        if (string.IsNullOrWhiteSpace(options.Tts.VoicesDirectory))
+            failures.Add("Interactions:Tts:VoicesDirectory is required.");
         if (string.IsNullOrWhiteSpace(options.ReservedCommandPrefix))
             failures.Add("Interactions:ReservedCommandPrefix is required.");
         if (!string.IsNullOrWhiteSpace(options.ReservedCommandPrefix) &&

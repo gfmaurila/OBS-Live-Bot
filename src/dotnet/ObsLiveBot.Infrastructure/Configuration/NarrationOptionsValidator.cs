@@ -38,6 +38,12 @@ public sealed class NarrationOptionsValidator(
         if (options.EventBufferCapacity is < 1 or > 10_000)
             failures.Add("Narration:EventBufferCapacity must be between 1 and 10000.");
 
+        // How long an accepted interaction may hold its place in the playback order waiting for its own
+        // audio. It bounds the worst case: below the slowest model call plus synthesis, a busy stream
+        // would have healthy interactions force-released; far above it, a hung call stalls the order.
+        if (options.GroupAdmissionTimeoutSeconds is < 5 or > 600)
+            failures.Add("Narration:GroupAdmissionTimeoutSeconds must be between 5 and 600.");
+
         // Dual voice roles. The username template is substituted literally when speaking, so an
         // unrecognized token is a startup error rather than raw punctuation read aloud mid-stream.
         ValidateRole(failures, "ChatVoice", options.ChatVoice);

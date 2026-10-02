@@ -23,6 +23,14 @@ public sealed class NarrationOptions
     public string HostRuntimeDirectory { get; set; } = "D:/OBS-Live/OBS-Live-Bot/data/runtime/tts";
     public int EventBufferCapacity { get; set; } = 100;
 
+    /// <summary>
+    /// How long an accepted interaction may hold its admission slot while its own audio is still
+    /// being produced, before the slot is force-closed and the following interactions are released.
+    /// This is what stops one hung AI or TTS call from stalling narration forever; the abandoned
+    /// group loses only its remaining role.
+    /// </summary>
+    public int GroupAdmissionTimeoutSeconds { get; set; } = 120;
+
     /// <summary>Reads the incoming chat message aloud in its own voice.</summary>
     public ChatVoiceOptions ChatVoice { get; set; } = new();
 
@@ -124,27 +132,54 @@ public interface INarrationEventPublisher
 /// One interaction's worth of dual voice audio. Both artifacts belong to the same interaction and are
 /// played in a fixed order: Chat first, Assistant second, never overlapping.
 /// </summary>
+/// <summary>
+/// One accepted interaction's two narrations.
+///
+/// Each role is supplied as a promise that the interaction pipeline settles when that clip is known,
+/// and a null result means there will be no clip for that role: synthesis failed, the model failed, its
+/// reply was unusable, or the interaction was text-only. Resolving to null is what lets the slot close
+/// promptly instead of waiting out the admission timeout, so a failed interaction can never hold up the
+/// ones accepted after it.
+/// </summary>
 public sealed record DualVoiceNarrationRequest(
     Guid InteractionId,
+    long AcceptedSequence,
     string CorrelationId,
-    Task<TextToSpeechResult>? ChatAudio,
-    Task<TextToSpeechResult>? AssistantAudio,
+    Task<TextToSpeechResult?>? ChatAudio,
+    Task<TextToSpeechResult?>? AssistantAudio,
     TimeSpan AcceptedAtOffset);
 
 /// <summary>
-/// Serializes dual voice playback across concurrent interactions.
+/// Serializes dual voice playback across concurrent interactions and preserves strict acceptance order.
 ///
 /// Two guarantees matter here and are not provided by a plain FIFO queue. First, within an
 /// interaction the Chat artifact is always enqueued before the Assistant artifact, so a slow AI
-/// response can never let the reply overtake the message that prompted it. Second, an interaction's
-/// Chat item is not enqueued until the previous interaction's Assistant item has been enqueued, which
-/// keeps "A chat, A assistant, B chat, B assistant" grouping instead of interleaving.
+/// response can never let the reply overtake the message that prompted it. Second, a group is not
+/// admitted until every group accepted earlier has been fully admitted, which keeps
+/// "A chat, A assistant, B chat, B assistant" instead of interleaving.
+///
+/// Ordering is by <see cref="DualVoiceNarrationRequest.AcceptedSequence"/>, which the interaction
+/// pipeline takes atomically when it accepts the chat message, not when the model answers. A
+/// regression of the pipeline that submitted only after the reply was ready would let a fast reply
+/// overtake an earlier slow one; the registration is deliberately placed at acceptance so that the
+/// key and the order are the same fact.
 /// </summary>
 public interface IDualVoiceNarrationCoordinator
 {
     /// <summary>
-    /// Queues both roles of one interaction in order. The returned task completes when the group's
-    /// items have been enqueued; callers are not required to await it.
+    /// Reserves an admission slot for one interaction and queues its roles in acceptance order.
+    /// The returned task completes once the slot is reserved; callers are not required to await it,
+    /// and the group's own audio may still be pending when it returns.
     /// </summary>
     Task SubmitAsync(DualVoiceNarrationRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Admits a group that an operator asked for explicitly, bypassing the autoplay gate.
+    ///
+    /// This is a development-only escape hatch, named separately so the automatic path can never reach
+    /// it by accident. It deliberately does not change <see cref="NarrationOptions.AutoPlayInteractions"/>:
+    /// an automated chat interaction still cannot reach playback while autoplay is off, and the switch
+    /// keeps its value for the whole test.
+    /// </summary>
+    Task SubmitDevelopmentTestAsync(DualVoiceNarrationRequest request, CancellationToken cancellationToken);
 }

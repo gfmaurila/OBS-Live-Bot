@@ -1,28 +1,25 @@
-using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
-using ObsLiveBot.Application.Interactions;
 using ObsLiveBot.Application.Narration;
-using ObsLiveBot.Domain.Chat;
 using ObsLiveBot.Domain.Interactions;
 using ObsLiveBot.Domain.Narration;
 
 namespace ObsLiveBot.UnitTests.Interactions;
 
-/// <summary>
-/// The dual voice contract. Two properties are asserted throughout: a viewer's message is heard
-/// before the reply it caused, and concurrent interactions stay grouped rather than interleaved.
-/// </summary>
 public sealed class DualVoiceNarrationTests
 {
     [Fact]
-    public async Task WithinAnInteraction_ChatIsQueuedBeforeAssistant()
+    public async Task ChatRole_IsAdmittedBeforeTheAssistantRole()
     {
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration);
 
-        await SubmitAsync(coordinator, "A");
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 1, "corr", Chat("chat.wav"), Assistant("assistant.wav"), TimeSpan.Zero),
+            CancellationToken.None);
+
         await WaitForAsync(() => narration.Enqueued.Count == 2);
 
         Assert.Equal(
@@ -38,14 +35,12 @@ public sealed class DualVoiceNarrationTests
     {
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration);
-        var aiGate = new TaskCompletionSource<TextToSpeechResult>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var aiGate = PendingAssistant();
 
         // The chat clip is ready immediately; the assistant clip is not ready until the model answers.
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                Guid.NewGuid(), "corr", Task.FromResult(Audio("chat.wav", "chat")),
-                aiGate.Task, TimeSpan.Zero),
+                Guid.NewGuid(), 1, "corr", Chat("chat.wav"), aiGate.Task, TimeSpan.Zero),
             CancellationToken.None);
 
         await WaitForAsync(() => narration.Enqueued.Count == 1);
@@ -58,29 +53,153 @@ public sealed class DualVoiceNarrationTests
             narration.Enqueued.Select(item => item.Role).ToArray());
     }
 
+    /// <summary>
+    /// The headline guarantee. A is accepted first, B's reply is ready first, and playback must still
+    /// be A chat, A assistant, B chat, B assistant. Ordering is by acceptance, not by readiness.
+    /// </summary>
     [Fact]
-    public async Task TwoInteractions_KeepTheirGroupsInsteadOfInterleaving()
+    public async Task InteractionAcceptedFirst_PlaysFirst_EvenWhenTheLaterReplyIsReadyFirst()
     {
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration);
-        // Interaction B is submitted first and is ready first, so an admission order that ignored
-        // submission order would produce B chat, A chat, B assistant.
+        var aReply = PendingAssistant();
+
+        // A is accepted first. Its model call is still running, so its reply is not ready.
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 1, "A", Chat("a-chat.wav"), aReply.Task, TimeSpan.Zero),
+            CancellationToken.None);
+        await WaitForAsync(() => narration.Enqueued.Count == 1);
+
+        // B is accepted second but is ready immediately, so a coordinator that ordered by readiness
+        // would put B's chat clip in the queue right now.
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 2, "B", Chat("b-chat.wav"), Assistant("b-assistant.wav"), TimeSpan.Zero),
+            CancellationToken.None);
+
+        await Task.Delay(150);
+        Assert.Equal(new[] { "A" }, narration.Enqueued.Select(item => item.CorrelationId).Distinct().ToArray());
+        Assert.Equal(NarrationVoiceRole.Chat, narration.Enqueued[0].Role);
+
+        // Only now does A's reply land, and the whole of A is spoken before B is let in.
+        aReply.SetResult(Audio("a-assistant.wav", "assistant"));
+        await WaitForAsync(() => narration.Enqueued.Count == 4);
+
+        Assert.Equal(
+            new[] { "A", "A", "B", "B" },
+            narration.Enqueued.Select(item => item.CorrelationId).ToArray());
+        Assert.Equal(
+            new[] { NarrationVoiceRole.Chat, NarrationVoiceRole.Assistant,
+                    NarrationVoiceRole.Chat, NarrationVoiceRole.Assistant },
+            narration.Enqueued.Select(item => item.Role).ToArray());
+    }
+
+    [Fact]
+    public async Task AdmissionFollowsTheAcceptanceKey_NotTheArrivalOfTheSubmissions()
+    {
+        var narration = new RecordingNarrationService();
+        var coordinator = Coordinator(narration);
+
+        // B reaches the coordinator first, yet A was accepted first and must still be spoken first.
         var b = new DualVoiceNarrationRequest(
-            Guid.NewGuid(), "B", Task.FromResult(Audio("b-chat.wav", "b")),
-            Task.FromResult(Audio("b-assistant.wav", "b")), TimeSpan.Zero);
+            Guid.NewGuid(), 2, "B", Chat("b-chat.wav"), Assistant("b-assistant.wav"), TimeSpan.Zero);
         var a = new DualVoiceNarrationRequest(
-            Guid.NewGuid(), "A", Task.FromResult(Audio("a-chat.wav", "a")),
-            Task.FromResult(Audio("a-assistant.wav", "a")), TimeSpan.Zero);
+            Guid.NewGuid(), 1, "A", Chat("a-chat.wav"), Assistant("a-assistant.wav"), TimeSpan.Zero);
 
         await coordinator.SubmitAsync(b, CancellationToken.None);
         await coordinator.SubmitAsync(a, CancellationToken.None);
         await WaitForAsync(() => narration.Enqueued.Count == 4);
 
-        Assert.Equal(new[] { "B", "A" }, narration.Enqueued.Select(item => item.CorrelationId).Distinct().ToArray());
+        Assert.Equal(new[] { "A", "A", "B", "B" }, narration.Enqueued.Select(item => item.CorrelationId).ToArray());
         Assert.Equal(
             new[] { NarrationVoiceRole.Chat, NarrationVoiceRole.Assistant,
                     NarrationVoiceRole.Chat, NarrationVoiceRole.Assistant },
             narration.Enqueued.Select(item => item.Role).ToArray());
+    }
+
+    [Fact]
+    public async Task FailedAiCall_ClosesTheSlotAndLetsTheNextInteractionThrough()
+    {
+        var narration = new RecordingNarrationService();
+        var coordinator = Coordinator(narration);
+        var aReply = PendingAssistant();
+
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 1, "A", Chat("a-chat.wav"), aReply.Task, TimeSpan.Zero),
+            CancellationToken.None);
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 2, "B", Chat("b-chat.wav"), Assistant("b-assistant.wav"), TimeSpan.Zero),
+            CancellationToken.None);
+        await WaitForAsync(() => narration.Enqueued.Count == 1);
+
+        // The model failed, so the pipeline resolves the promise with "no assistant clip".
+        aReply.SetResult(null);
+        await WaitForAsync(() => narration.Enqueued.Count == 3);
+
+        // A's chat is still heard, A's slot is closed, and B is not blocked behind it.
+        Assert.Equal(
+            new[] { "A", "B", "B" },
+            narration.Enqueued.Select(item => item.CorrelationId).ToArray());
+        Assert.Equal(
+            new[] { NarrationVoiceRole.Chat, NarrationVoiceRole.Chat, NarrationVoiceRole.Assistant },
+            narration.Enqueued.Select(item => item.Role).ToArray());
+    }
+
+    [Fact]
+    public async Task FailedAssistantSynthesis_ClosesTheSlotAndLetsTheNextInteractionThrough()
+    {
+        var narration = new RecordingNarrationService();
+        var coordinator = Coordinator(narration);
+
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 1, "A", Chat("a-chat.wav"), Failed("TTS_ENGINE_FAILED"), TimeSpan.Zero),
+            CancellationToken.None);
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 2, "B", Chat("b-chat.wav"), Assistant("b-assistant.wav"), TimeSpan.Zero),
+            CancellationToken.None);
+        await WaitForAsync(() => narration.Enqueued.Count == 3);
+
+        // A's reply could not be voiced: A's chat plays, A's slot still closes, B proceeds in order.
+        Assert.Equal(
+            new[] { "A", "B", "B" },
+            narration.Enqueued.Select(item => item.CorrelationId).ToArray());
+        Assert.Equal(
+            new[] { NarrationVoiceRole.Chat, NarrationVoiceRole.Chat, NarrationVoiceRole.Assistant },
+            narration.Enqueued.Select(item => item.Role).ToArray());
+    }
+
+    [Fact]
+    public async Task ReplyThatNeverArrives_ReleasesTheSlotAfterTheAdmissionTimeout()
+    {
+        var narration = new RecordingNarrationService();
+        var coordinator = Coordinator(narration, admissionTimeoutSeconds: 1);
+        var neverArrives = PendingAssistant();
+
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 1, "stuck", Chat("stuck-chat.wav"), neverArrives.Task, TimeSpan.Zero),
+            CancellationToken.None);
+        await coordinator.SubmitAsync(
+            new DualVoiceNarrationRequest(
+                Guid.NewGuid(), 2, "next", Chat("next-chat.wav"), Assistant("next-assistant.wav"), TimeSpan.Zero),
+            CancellationToken.None);
+
+        // A hung model call must not hold the playback order for good.
+        await WaitForAsync(() => narration.Enqueued.Count == 3, timeoutMilliseconds: 10_000);
+        Assert.Equal(
+            new[] { "stuck", "next", "next" },
+            narration.Enqueued.Select(item => item.CorrelationId).ToArray());
+
+        // The abandoned interaction can never sneak its clip in behind the ones already released.
+        neverArrives.SetResult(Audio("late-assistant.wav", "assistant"));
+        await Task.Delay(150);
+        Assert.Equal(3, narration.Enqueued.Count);
+        Assert.DoesNotContain(narration.Enqueued, item => item.Artifact.Path.Contains("late-assistant"));
     }
 
     [Fact]
@@ -89,7 +208,7 @@ public sealed class DualVoiceNarrationTests
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration);
 
-        for (var index = 0; index < 3; index++) await SubmitAsync(coordinator, $"G{index}");
+        for (var index = 0; index < 3; index++) await SubmitAsync(coordinator, $"G{index}", index + 1);
         await WaitForAsync(() => narration.Enqueued.Count == 6);
 
         var sequences = narration.Enqueued.Select(item => item.GroupSequence).Distinct().ToArray();
@@ -107,10 +226,7 @@ public sealed class DualVoiceNarrationTests
 
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                interactionId, "corr-123",
-                Task.FromResult(Audio("chat.wav", "chat")),
-                Task.FromResult(Audio("assistant.wav", "assistant")),
-                TimeSpan.Zero),
+                interactionId, 1, "corr-123", Chat("chat.wav"), Assistant("assistant.wav"), TimeSpan.Zero),
             CancellationToken.None);
         await WaitForAsync(() => narration.Enqueued.Count == 2);
 
@@ -131,10 +247,9 @@ public sealed class DualVoiceNarrationTests
 
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                Guid.NewGuid(), "corr",
-                Task.FromResult(Audio("chat.wav", "chat", chat)),
-                Task.FromResult(Audio("assistant.wav", "assistant", assistant)),
-                TimeSpan.Zero),
+                Guid.NewGuid(), 1, "corr",
+                Task.FromResult<TextToSpeechResult?>(Audio("chat.wav", "chat", chat)),
+                Assistant("assistant.wav", assistant), TimeSpan.Zero),
             CancellationToken.None);
         await WaitForAsync(() => narration.Enqueued.Count == 2);
 
@@ -152,7 +267,7 @@ public sealed class DualVoiceNarrationTests
             configureChat: chat => chat.Volume = 40,
             configureAssistant: assistant => assistant.Volume = 90);
 
-        await SubmitAsync(coordinator, "A");
+        await SubmitAsync(coordinator, "A", 1);
         await WaitForAsync(() => narration.Enqueued.Count == 2);
 
         Assert.Equal(40, narration.Enqueued[0].RequestedVolume);
@@ -165,7 +280,7 @@ public sealed class DualVoiceNarrationTests
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration, configureChat: chat => chat.Volume = 40);
 
-        await SubmitAsync(coordinator, "A");
+        await SubmitAsync(coordinator, "A", 1);
         await WaitForAsync(() => narration.Enqueued.Count == 2);
 
         Assert.Equal(40, narration.Enqueued[0].RequestedVolume);
@@ -178,7 +293,7 @@ public sealed class DualVoiceNarrationTests
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration, configureChat: chat => chat.Enabled = false);
 
-        await SubmitAsync(coordinator, "A");
+        await SubmitAsync(coordinator, "A", 1);
         await WaitForAsync(() => narration.Enqueued.Count == 1);
 
         Assert.Equal(NarrationVoiceRole.Assistant, narration.Enqueued[0].Role);
@@ -192,10 +307,7 @@ public sealed class DualVoiceNarrationTests
 
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                Guid.NewGuid(), "corr",
-                Task.FromResult(FailedAudio("TTS_BUSY")),
-                Task.FromResult(Audio("assistant.wav", "assistant")),
-                TimeSpan.Zero),
+                Guid.NewGuid(), 1, "corr", Failed("TTS_BUSY"), Assistant("assistant.wav"), TimeSpan.Zero),
             CancellationToken.None);
         await WaitForAsync(() => narration.Enqueued.Count == 1);
 
@@ -210,10 +322,7 @@ public sealed class DualVoiceNarrationTests
 
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                Guid.NewGuid(), "corr",
-                Task.FromResult(Audio("chat.wav", "chat")),
-                Task.FromResult(FailedAudio("TTS_ENGINE_FAILED")),
-                TimeSpan.Zero),
+                Guid.NewGuid(), 1, "corr", Chat("chat.wav"), Failed("TTS_ENGINE_FAILED"), TimeSpan.Zero),
             CancellationToken.None);
         await WaitForAsync(() => narration.Enqueued.Count == 1);
 
@@ -228,10 +337,9 @@ public sealed class DualVoiceNarrationTests
 
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                Guid.NewGuid(), "bad", Task.FromResult(FailedAudio("TTS_BUSY")),
-                Task.FromResult(FailedAudio("TTS_BUSY")), TimeSpan.Zero),
+                Guid.NewGuid(), 1, "bad", Failed("TTS_BUSY"), Failed("TTS_BUSY"), TimeSpan.Zero),
             CancellationToken.None);
-        await SubmitAsync(coordinator, "good");
+        await SubmitAsync(coordinator, "good", 2);
         await WaitForAsync(() => narration.Enqueued.Count == 2);
 
         Assert.All(narration.Enqueued, item => Assert.Equal("good", item.CorrelationId));
@@ -242,14 +350,12 @@ public sealed class DualVoiceNarrationTests
     {
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration);
-        var boom = new TaskCompletionSource<TextToSpeechResult>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var boom = PendingAssistant();
         boom.SetException(new InvalidOperationException("engine exploded"));
 
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                Guid.NewGuid(), "corr", boom.Task,
-                Task.FromResult(Audio("assistant.wav", "assistant")), TimeSpan.Zero),
+                Guid.NewGuid(), 1, "corr", boom.Task, Assistant("assistant.wav"), TimeSpan.Zero),
             CancellationToken.None);
         await WaitForAsync(() => narration.Enqueued.Count == 1);
 
@@ -262,8 +368,8 @@ public sealed class DualVoiceNarrationTests
         var narration = new RecordingNarrationService { RejectCorrelationId = "first" };
         var coordinator = Coordinator(narration);
 
-        await SubmitAsync(coordinator, "first");
-        await SubmitAsync(coordinator, "second");
+        await SubmitAsync(coordinator, "first", 1);
+        await SubmitAsync(coordinator, "second", 2);
         await WaitForAsync(() => narration.Enqueued.Count == 2);
 
         Assert.Equal(new[] { "second" }, narration.Enqueued.Select(item => item.CorrelationId).Distinct().ToArray());
@@ -275,32 +381,47 @@ public sealed class DualVoiceNarrationTests
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration, autoPlay: false);
 
-        await SubmitAsync(coordinator, "A");
+        await SubmitAsync(coordinator, "A", 1);
         await Task.Delay(80);
 
         Assert.Empty(narration.Enqueued);
     }
 
     [Fact]
-    public async Task SubmissionBeyondTheAdmissionLimit_IsRejectedRatherThanBuffered()
+    public async Task ReorderingTheSameInteractionTwice_IsRejectedAsADuplicate()
     {
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration);
+        var request = new DualVoiceNarrationRequest(
+            Guid.NewGuid(), 7, "same", Chat("chat.wav"), Assistant("assistant.wav"), TimeSpan.Zero);
+
+        await coordinator.SubmitAsync(request, CancellationToken.None);
+        await coordinator.SubmitAsync(request, CancellationToken.None);
+        await WaitForAsync(() => narration.Enqueued.Count == 2);
+        await Task.Delay(100);
+
+        // A retried submission must not speak the same interaction twice.
+        Assert.Equal(2, narration.Enqueued.Count);
+    }
+
+    [Fact]
+    public async Task SubmissionBeyondTheAdmissionLimit_IsRejectedRatherThanBuffered()
+    {
+        var narration = new RecordingNarrationService();
+        var coordinator = Coordinator(narration, admissionTimeoutSeconds: 300);
         // Hold every assistant clip so no group can complete and free an admission slot.
-        var blockers = new List<TaskCompletionSource<TextToSpeechResult>>();
+        var blockers = new List<TaskCompletionSource<TextToSpeechResult?>>();
         for (var index = 0; index < DualVoiceNarrationCoordinator.MaxPendingGroups + 4; index++)
         {
-            var gate = new TaskCompletionSource<TextToSpeechResult>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
+            var gate = PendingAssistant();
             blockers.Add(gate);
             await coordinator.SubmitAsync(
                 new DualVoiceNarrationRequest(
-                    Guid.NewGuid(), $"corr{index}", Task.FromResult(Audio("chat.wav", "chat")),
-                    gate.Task, TimeSpan.Zero),
+                    Guid.NewGuid(), index + 1, $"corr{index}", Chat("chat.wav"), gate.Task, TimeSpan.Zero),
                 CancellationToken.None);
         }
 
-        await Task.Delay(120);
+        await Task.Delay(200);
         // Bounded: at most one chat clip per admitted group reached the queue.
         Assert.True(narration.Enqueued.Count <= DualVoiceNarrationCoordinator.MaxPendingGroups,
             $"enqueued {narration.Enqueued.Count}");
@@ -314,7 +435,7 @@ public sealed class DualVoiceNarrationTests
         var narration = new RecordingNarrationService();
         var coordinator = Coordinator(narration);
 
-        for (var index = 0; index < 4; index++) await SubmitAsync(coordinator, $"G{index}");
+        for (var index = 0; index < 4; index++) await SubmitAsync(coordinator, $"G{index}", index + 1);
         await WaitForAsync(() => narration.Enqueued.Count == 8);
 
         // One queue entry per item, each with its own narration id: the single-reader queue is what
@@ -324,30 +445,46 @@ public sealed class DualVoiceNarrationTests
         Assert.Equal(4, narration.Enqueued.Count(item => item.Order == NarrationOrder.Assistant));
     }
 
-    private static async Task SubmitAsync(IDualVoiceNarrationCoordinator coordinator, string group)
+    private static async Task SubmitAsync(IDualVoiceNarrationCoordinator coordinator, string group, long acceptedSequence)
     {
         await coordinator.SubmitAsync(
             new DualVoiceNarrationRequest(
-                Guid.NewGuid(), group,
-                Task.FromResult(Audio($"{group}-chat.wav", "chat")),
-                Task.FromResult(Audio($"{group}-assistant.wav", "assistant")),
-                TimeSpan.Zero),
+                Guid.NewGuid(), acceptedSequence, group,
+                Chat($"{group}-chat.wav"), Assistant($"{group}-assistant.wav"), TimeSpan.Zero),
             CancellationToken.None);
     }
+
+    private static TaskCompletionSource<TextToSpeechResult?> PendingAssistant() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static DualVoiceNarrationCoordinator Coordinator(
         INarrationService narration,
         bool autoPlay = true,
+        int admissionTimeoutSeconds = 120,
         Action<ChatVoiceOptions>? configureChat = null,
         Action<NarrationVoiceRoleOptions>? configureAssistant = null)
     {
-        var options = new NarrationOptions { Enabled = true, AutoPlayInteractions = autoPlay };
+        var options = new NarrationOptions
+        {
+            Enabled = true,
+            AutoPlayInteractions = autoPlay,
+            GroupAdmissionTimeoutSeconds = admissionTimeoutSeconds
+        };
         configureChat?.Invoke(options.ChatVoice);
         configureAssistant?.Invoke(options.AssistantVoice);
         return new DualVoiceNarrationCoordinator(
             narration, Options.Create(options),
             NullLogger<DualVoiceNarrationCoordinator>.Instance);
     }
+
+    private static Task<TextToSpeechResult?> Chat(string path) =>
+        Task.FromResult<TextToSpeechResult?>(Audio(path, "chat"));
+
+    private static Task<TextToSpeechResult?> Assistant(string path, Guid? artifactId = null) =>
+        Task.FromResult<TextToSpeechResult?>(Audio(path, "assistant", artifactId));
+
+    private static Task<TextToSpeechResult?> Failed(string errorCode) =>
+        Task.FromResult<TextToSpeechResult?>(FailedAudio(errorCode));
 
     private static TextToSpeechResult Audio(string path, string voice, Guid? artifactId = null) =>
         new(true, "Piper", "audio/wav", path, TimeSpan.FromSeconds(1), null,

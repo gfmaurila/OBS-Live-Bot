@@ -110,188 +110,214 @@ public sealed class InteractionOrchestrator(
             ? null
             : StartChatSynthesis(decision, chatSpeech);
 
-        var aiStartedAt = timeProvider.GetUtcNow();
-        logger.LogInformation(
-            "INTERACTION_AI_STARTED interactionId={InteractionId} provider={Provider} providerMessageId={ProviderMessageId} correlationId={CorrelationId} startedAt={StartedAt}",
-            decision.DecisionId, decision.Provider, decision.ProviderMessageId, decision.CorrelationId, aiStartedAt);
-        var aiOutcome = await GenerateAiAsync(
-            contextBuilder.Build(chatEvent, decision), decision, cancellationToken).ConfigureAwait(false);
-        var aiResponse = aiOutcome.Response;
-        var aiReadyAt = timeProvider.GetUtcNow();
-        logger.LogInformation(
-            "INTERACTION_AI_COMPLETED interactionId={InteractionId} provider={Provider} success={Success} providerName={AiProvider} durationMs={DurationMs} correlationId={CorrelationId} completedAt={CompletedAt}",
-            decision.DecisionId, decision.Provider, aiResponse.Success, aiResponse.ProviderName,
-            aiResponse.Duration.TotalMilliseconds, decision.CorrelationId, timeProvider.GetUtcNow());
+        // The admission slot is reserved here, at acceptance, and not after the model answers. The
+        // coordinator admits groups in acceptance order, so a fast reply for a later message can no
+        // longer overtake an earlier slow one, while the AI call and the synthesis of every accepted
+        // interaction still run concurrently with one another.
+        //
+        // The assistant half does not exist yet, so the slot is completed through a promise that every
+        // exit path settles. A null result means the assistant clip is never going to happen, which is
+        // how a failed AI call, an unusable reply or a text-only interaction still closes its own slot
+        // and releases the interactions waiting behind it.
+        var assistantSlot = new TaskCompletionSource<TextToSpeechResult?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        ReserveAdmissionSlot(decision, chatTtsTask, assistantSlot, voiceRequested, acceptedAtOffset);
 
-        if (!aiResponse.Success)
+        try
         {
-            // The model failed, but a message that was accepted is still worth hearing, so the chat
-            // clip is submitted on its own instead of being discarded with the interaction.
-            SubmitChatOnlyAsync(decision, chatTtsTask, acceptedAtOffset);
-            return await FailAsync(
-                decision,
-                aiResponse.ErrorCode ?? "AI_PROVIDER_FAILED",
-                cancellationToken,
-                aiResponse.ProviderName,
-                aiResponse.ModelName,
-                false,
-                aiResponse.Duration,
-                aiFallbackUsed: aiOutcome.FallbackUsed,
-                primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
-        }
-
-        var sanitized = sanitizer.Sanitize(aiResponse.Text);
-        if (!sanitized.Success)
-        {
-            SubmitChatOnlyAsync(decision, chatTtsTask, acceptedAtOffset);
-            return await FailAsync(
-                decision,
-                sanitized.ErrorCode ?? "AI_RESPONSE_INVALID",
-                cancellationToken,
-                aiResponse.ProviderName,
-                aiResponse.ModelName,
-                true,
-                aiResponse.Duration,
-                aiFallbackUsed: aiOutcome.FallbackUsed,
-                primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
-        }
-
-        if (requestedMode is null)
-            cooldown.CommitAutomatic(decision.Provider, decision.ChannelId, decision.UserId);
-
-        TextToSpeechResult? ttsResult = null;
-        var ttsFallbackUsed = false;
-        string? primaryTtsErrorCode = null;
-        var assistantTtsStartedAt = (DateTimeOffset?)null;
-        Task<TtsGenerationOutcome>? assistantSynthesis = null;
-        // The assistant clip is the interaction's own reply, so it follows the requested response mode
-        // and is not gated by the narration switch. Whether it is ever spoken is decided downstream by
-        // the coordinator, which refuses to enqueue anything while autoplay is off.
-        if (voiceRequested)
-        {
-            assistantTtsStartedAt = timeProvider.GetUtcNow();
+            var aiStartedAt = timeProvider.GetUtcNow();
             logger.LogInformation(
-                "INTERACTION_TTS_STARTED interactionId={InteractionId} provider={Provider} correlationId={CorrelationId} startedAt={StartedAt}",
-                decision.DecisionId, decision.Provider, decision.CorrelationId, assistantTtsStartedAt);
-            // Started but not awaited: the group is handed over below with the reply still in flight, so
-            // the chat clip can already be speaking while this synthesis finishes.
-            assistantSynthesis = GenerateTtsAsync(
-                new TextToSpeechRequest(
-                    decision.DecisionId,
-                    sanitized.Text!,
-                    ResolveVoice(narrationOptions.Value.AssistantVoice.VoiceId),
-                    options.Value.Language,
-                    decision.CorrelationId,
-                    ArtifactIdFor(decision, NarrationVoiceRole.Assistant)),
-                decision,
-                cancellationToken);
-        }
-
-        // The pair is submitted before the reply is read. The coordinator keeps the chat half first, so
-        // the viewer's message is heard without waiting for the assistant synthesis to complete.
-        SubmitDualAsync(decision, chatTtsTask, assistantSynthesis, acceptedAtOffset);
-
-        if (assistantSynthesis is not null)
-        {
-            var ttsOutcome = await assistantSynthesis.ConfigureAwait(false);
-            ttsResult = ttsOutcome.Response;
-            ttsFallbackUsed = ttsOutcome.FallbackUsed;
-            primaryTtsErrorCode = ttsOutcome.PrimaryErrorCode;
+                "INTERACTION_AI_STARTED interactionId={InteractionId} provider={Provider} providerMessageId={ProviderMessageId} correlationId={CorrelationId} startedAt={StartedAt}",
+                decision.DecisionId, decision.Provider, decision.ProviderMessageId, decision.CorrelationId, aiStartedAt);
+            var aiOutcome = await GenerateAiAsync(
+                contextBuilder.Build(chatEvent, decision), decision, cancellationToken).ConfigureAwait(false);
+            var aiResponse = aiOutcome.Response;
+            var aiReadyAt = timeProvider.GetUtcNow();
             logger.LogInformation(
-                "INTERACTION_TTS_COMPLETED interactionId={InteractionId} provider={Provider} success={Success} ttsProvider={TtsProvider} durationMs={DurationMs} correlationId={CorrelationId} completedAt={CompletedAt}",
-                decision.DecisionId, decision.Provider, ttsResult.Success, ttsResult.ProviderName,
-                ttsResult.Duration.TotalMilliseconds, decision.CorrelationId, timeProvider.GetUtcNow());
+                "INTERACTION_AI_COMPLETED interactionId={InteractionId} provider={Provider} success={Success} providerName={AiProvider} durationMs={DurationMs} correlationId={CorrelationId} completedAt={CompletedAt}",
+                decision.DecisionId, decision.Provider, aiResponse.Success, aiResponse.ProviderName,
+                aiResponse.Duration.TotalMilliseconds, decision.CorrelationId, timeProvider.GetUtcNow());
 
-            if (!ttsResult.Success)
-            {
-                // A reply that could not be voiced must not silence the viewer's own message. The group
-                // was already submitted, and the coordinator skips a role whose audio never appears.
-                return await FailAsync(
+                if (!aiResponse.Success)
+                {
+                    // The model failed. The reserved slot is closed by the finally below, which leaves the
+                    // chat clip to be spoken on its own instead of being discarded with the interaction.
+                    return await FailAsync(
                     decision,
-                    ttsResult.ErrorCode ?? "TTS_PROVIDER_FAILED",
+                    aiResponse.ErrorCode ?? "AI_PROVIDER_FAILED",
+                    cancellationToken,
+                    aiResponse.ProviderName,
+                    aiResponse.ModelName,
+                    false,
+                    aiResponse.Duration,
+                    aiFallbackUsed: aiOutcome.FallbackUsed,
+                    primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
+            }
+
+            var sanitized = sanitizer.Sanitize(aiResponse.Text);
+                if (!sanitized.Success)
+                {
+                    // Same here: the slot closes without an assistant clip and the chat voice still speaks.
+                    return await FailAsync(
+                    decision,
+                    sanitized.ErrorCode ?? "AI_RESPONSE_INVALID",
                     cancellationToken,
                     aiResponse.ProviderName,
                     aiResponse.ModelName,
                     true,
                     aiResponse.Duration,
-                    ttsResult.ProviderName,
-                    false,
-                    ttsResult.Duration,
-                    sanitized.Text,
-                    ttsResult.AudioFormat,
-                    ttsResult.AudioPath,
-                    aiOutcome.FallbackUsed,
-                    aiOutcome.PrimaryErrorCode,
-                    ttsFallbackUsed,
-                    primaryTtsErrorCode,
-                    ttsResult.IsSimulated,
-                    ttsResult.VoiceName,
-                    ttsResult.AudioDuration,
-                    ttsResult.SampleRate,
-                    ttsResult.BitDepth,
-                    ttsResult.Channels).ConfigureAwait(false);
+                    aiFallbackUsed: aiOutcome.FallbackUsed,
+                    primaryAiErrorCode: aiOutcome.PrimaryErrorCode).ConfigureAwait(false);
             }
+
+            if (requestedMode is null)
+                cooldown.CommitAutomatic(decision.Provider, decision.ChannelId, decision.UserId);
+
+            TextToSpeechResult? ttsResult = null;
+            var ttsFallbackUsed = false;
+            string? primaryTtsErrorCode = null;
+            var assistantTtsStartedAt = (DateTimeOffset?)null;
+            Task<TtsGenerationOutcome>? assistantSynthesis = null;
+            // The assistant clip is the interaction's own reply, so it follows the requested response mode
+            // and is not gated by the narration switch. Whether it is ever spoken is decided downstream by
+            // the coordinator, which refuses to enqueue anything while autoplay is off.
+            if (voiceRequested)
+            {
+                assistantTtsStartedAt = timeProvider.GetUtcNow();
+                logger.LogInformation(
+                    "INTERACTION_TTS_STARTED interactionId={InteractionId} provider={Provider} correlationId={CorrelationId} startedAt={StartedAt}",
+                    decision.DecisionId, decision.Provider, decision.CorrelationId, assistantTtsStartedAt);
+                // Started but not awaited: the group is handed over below with the reply still in flight, so
+                // the chat clip can already be speaking while this synthesis finishes.
+                assistantSynthesis = GenerateTtsAsync(
+                    new TextToSpeechRequest(
+                        decision.DecisionId,
+                        sanitized.Text!,
+                        ResolveVoice(narrationOptions.Value.AssistantVoice.VoiceId),
+                        options.Value.Language,
+                        decision.CorrelationId,
+                        ArtifactIdFor(decision, NarrationVoiceRole.Assistant)),
+                    decision,
+                    cancellationToken);
+            }
+
+            if (assistantSynthesis is not null)
+            {
+                var ttsOutcome = await assistantSynthesis.ConfigureAwait(false);
+                ttsResult = ttsOutcome.Response;
+                ttsFallbackUsed = ttsOutcome.FallbackUsed;
+                primaryTtsErrorCode = ttsOutcome.PrimaryErrorCode;
+                logger.LogInformation(
+                    "INTERACTION_TTS_COMPLETED interactionId={InteractionId} provider={Provider} success={Success} ttsProvider={TtsProvider} durationMs={DurationMs} correlationId={CorrelationId} completedAt={CompletedAt}",
+                    decision.DecisionId, decision.Provider, ttsResult.Success, ttsResult.ProviderName,
+                    ttsResult.Duration.TotalMilliseconds, decision.CorrelationId, timeProvider.GetUtcNow());
+
+                // The reply is handed to the slot reserved at acceptance the moment it exists, so the
+                // assistant clip is admitted without waiting for the rest of the interaction
+                // bookkeeping. A failed synthesis is handed over as it is: the coordinator skips a role
+                // whose audio never appears, which closes this slot deterministically rather than
+                // stalling every interaction accepted after it.
+                assistantSlot.TrySetResult(ttsResult);
+
+                if (!ttsResult.Success)
+                {
+                    // A reply that could not be voiced must not silence the viewer's own message, and must
+                    // not hold the admission slot either. The chat half is already with the coordinator.
+                    return await FailAsync(
+                        decision,
+                        ttsResult.ErrorCode ?? "TTS_PROVIDER_FAILED",
+                        cancellationToken,
+                        aiResponse.ProviderName,
+                        aiResponse.ModelName,
+                        true,
+                        aiResponse.Duration,
+                        ttsResult.ProviderName,
+                        false,
+                        ttsResult.Duration,
+                        sanitized.Text,
+                        ttsResult.AudioFormat,
+                        ttsResult.AudioPath,
+                        aiOutcome.FallbackUsed,
+                        aiOutcome.PrimaryErrorCode,
+                        ttsFallbackUsed,
+                        primaryTtsErrorCode,
+                        ttsResult.IsSimulated,
+                        ttsResult.VoiceName,
+                        ttsResult.AudioDuration,
+                        ttsResult.SampleRate,
+                        ttsResult.BitDepth,
+                        ttsResult.Channels).ConfigureAwait(false);
+                }
+            }
+
+            // The chat synthesis has been running since before the AI call, so by this point its result is
+            // normally already available. Reading it here records the chat half on the interaction result.
+            var chatTts = chatTtsTask is null ? null : await chatTtsTask.ConfigureAwait(false);
+            var chatTtsCompletedAt = chatTtsTask is null ? (DateTimeOffset?)null : timeProvider.GetUtcNow();
+
+            var completedAt = timeProvider.GetUtcNow();
+            var latency = new InteractionAudioLatency(
+                SpeechBuildMs: Ms(speechBuildDuration),
+                ChatTtsMs: chatTts is null ? null : Ms(chatTts.Duration),
+                AiMs: Ms(aiResponse.Duration),
+                AssistantTtsMs: ttsResult is null ? null : Ms(ttsResult.Duration),
+                AiStartedAfterAcceptedMs: Ms(aiStartedAt - acceptedAt),
+                ChatTtsStartedAfterAcceptedMs: Ms(chatTtsStartedAt - acceptedAt),
+                AcceptedToAiReadyMs: Ms(aiReadyAt - acceptedAt),
+                AcceptedToAssistantReadyMs: ttsResult is null ? null : Ms(completedAt - acceptedAt),
+                TotalMs: Ms(completedAt - decision.CreatedAtUtc));
+            var completed = new InteractionResult(
+                decision.DecisionId,
+                decision,
+                InteractionStatus.Completed,
+                sanitized.Text,
+                aiResponse.ProviderName,
+                aiResponse.ModelName,
+                true,
+                aiResponse.Duration,
+                aiOutcome.FallbackUsed,
+                aiOutcome.PrimaryErrorCode,
+                ttsResult?.ProviderName,
+                ttsResult?.Success,
+                ttsResult?.AudioFormat,
+                ttsResult?.AudioPath,
+                ttsResult?.Duration,
+                null,
+                decision.CreatedAtUtc,
+                completedAt,
+                decision.Sequence,
+                decision.CorrelationId,
+                ttsFallbackUsed,
+                primaryTtsErrorCode,
+                ttsResult?.IsSimulated,
+                ttsResult?.VoiceName,
+                ttsResult?.AudioDuration,
+                ttsResult?.SampleRate,
+                ttsResult?.BitDepth,
+                ttsResult?.Channels,
+                ChatSpeechText: chatSpeech?.Text,
+                ChatTtsSuccess: chatTts?.Success,
+                ChatTtsErrorCode: chatTts?.ErrorCode,
+                ChatTtsVoice: chatTts?.VoiceName ?? chatSpeech?.VoiceId,
+                ChatAudioPath: chatTts?.AudioPath,
+                ChatAudioFormat: chatTts?.AudioFormat,
+                ChatAudioDuration: chatTts?.AudioDuration,
+                ChatArtifactId: chatTts?.ArtifactId ?? default,
+                ChatSampleRate: chatTts?.SampleRate,
+                ChatBitDepth: chatTts?.BitDepth,
+                ChatChannels: chatTts?.Channels,
+                AudioLatency: latency);
+            await CompleteAsync(completed, cancellationToken).ConfigureAwait(false);
+            return completed;
         }
-
-        // The chat synthesis has been running since before the AI call, so by this point its result is
-        // normally already available. Reading it here records the chat half on the interaction result.
-        var chatTts = chatTtsTask is null ? null : await chatTtsTask.ConfigureAwait(false);
-        var chatTtsCompletedAt = chatTtsTask is null ? (DateTimeOffset?)null : timeProvider.GetUtcNow();
-
-        var completedAt = timeProvider.GetUtcNow();
-        var latency = new InteractionAudioLatency(
-            SpeechBuildMs: Ms(speechBuildDuration),
-            ChatTtsMs: chatTts is null ? null : Ms(chatTts.Duration),
-            AiMs: Ms(aiResponse.Duration),
-            AssistantTtsMs: ttsResult is null ? null : Ms(ttsResult.Duration),
-            AiStartedAfterAcceptedMs: Ms(aiStartedAt - acceptedAt),
-            ChatTtsStartedAfterAcceptedMs: Ms(chatTtsStartedAt - acceptedAt),
-            AcceptedToAiReadyMs: Ms(aiReadyAt - acceptedAt),
-            AcceptedToAssistantReadyMs: ttsResult is null ? null : Ms(completedAt - acceptedAt),
-            TotalMs: Ms(completedAt - decision.CreatedAtUtc));
-        var completed = new InteractionResult(
-            decision.DecisionId,
-            decision,
-            InteractionStatus.Completed,
-            sanitized.Text,
-            aiResponse.ProviderName,
-            aiResponse.ModelName,
-            true,
-            aiResponse.Duration,
-            aiOutcome.FallbackUsed,
-            aiOutcome.PrimaryErrorCode,
-            ttsResult?.ProviderName,
-            ttsResult?.Success,
-            ttsResult?.AudioFormat,
-            ttsResult?.AudioPath,
-            ttsResult?.Duration,
-            null,
-            decision.CreatedAtUtc,
-            completedAt,
-            decision.Sequence,
-            decision.CorrelationId,
-            ttsFallbackUsed,
-            primaryTtsErrorCode,
-            ttsResult?.IsSimulated,
-            ttsResult?.VoiceName,
-            ttsResult?.AudioDuration,
-            ttsResult?.SampleRate,
-            ttsResult?.BitDepth,
-            ttsResult?.Channels,
-            ChatSpeechText: chatSpeech?.Text,
-            ChatTtsSuccess: chatTts?.Success,
-            ChatTtsErrorCode: chatTts?.ErrorCode,
-            ChatTtsVoice: chatTts?.VoiceName ?? chatSpeech?.VoiceId,
-            ChatAudioPath: chatTts?.AudioPath,
-            ChatAudioFormat: chatTts?.AudioFormat,
-            ChatAudioDuration: chatTts?.AudioDuration,
-            ChatArtifactId: chatTts?.ArtifactId ?? default,
-            ChatSampleRate: chatTts?.SampleRate,
-            ChatBitDepth: chatTts?.BitDepth,
-            ChatChannels: chatTts?.Channels,
-            AudioLatency: latency);
-        await CompleteAsync(completed, cancellationToken).ConfigureAwait(false);
-        return completed;
+        finally
+        {
+            // Settles on every path, including a failed AI call, an unusable reply, a canceled
+            // interaction and an unexpected throw, so an accepted interaction can never hold the
+            // admission line open for the ones behind it. TrySetResult is idempotent, so the success
+            // path already settled with the real reply and this null is simply a no-op.
+            assistantSlot.TrySetResult(null);
+        }
     }
 
     private static long Ms(TimeSpan value) => (long)value.TotalMilliseconds;
@@ -401,64 +427,55 @@ public sealed class InteractionOrchestrator(
     }
 
     /// <summary>
-    /// Hands the chat and assistant clips to the coordinator as one group. The coordinator, not this
-    /// method, decides when each role reaches the queue, which is what keeps the ordering guarantees.
-    /// The submit is deliberately not awaited: narration is downstream of the interaction, so a slow or
-    /// stuck narrator must never delay, fail, or reorder the reply the viewer already received.
+    /// Reserves this interaction's admission slot with the coordinator.
+    ///
+    /// The call is deliberately not awaited. Narration is downstream of the interaction, so a slow or
+    /// stuck narrator must never delay, fail or reorder the reply the viewer already received, and the
+    /// reservation itself is synchronous: by the time this returns, the slot exists and holds this
+    /// interaction's place in the acceptance order. Which role is audible, and in what order, is the
+    /// coordinator's decision, not this method's.
     /// </summary>
-    private void SubmitDualAsync(
+    private void ReserveAdmissionSlot(
         InteractionDecision decision,
         Task<TextToSpeechResult>? chatAudio,
-        Task<TtsGenerationOutcome>? assistantSynthesis,
+        TaskCompletionSource<TextToSpeechResult?> assistantSlot,
+        bool voiceRequested,
         TimeSpan acceptedAtOffset)
     {
         if (!NarrationAudioActive) return;
-        if (chatAudio is null && assistantSynthesis is null) return;
+        // Nothing to speak at all, so there is no reason to hold a place in the playback order.
+        if (chatAudio is null && !voiceRequested) return;
 
         var request = new DualVoiceNarrationRequest(
             decision.DecisionId,
+            decision.Sequence,
             decision.CorrelationId,
-            chatAudio,
-            assistantSynthesis is null ? null : AssistantAudioAsync(assistantSynthesis),
+            chatAudio is null ? null : AsOptionalAsync(chatAudio),
+            assistantSlot.Task,
             acceptedAtOffset);
-        _ = SubmitGroupAsync(request, decision);
-    }
 
-    /// <summary>
-    /// Exposes the in-flight reply synthesis as the audio task the coordinator waits for, without
-    /// making the coordinator aware of the fallback bookkeeping around it.
-    /// </summary>
-    private static async Task<TextToSpeechResult> AssistantAudioAsync(Task<TtsGenerationOutcome> synthesis) =>
-        (await synthesis.ConfigureAwait(false)).Response;
-
-    private async Task SubmitGroupAsync(
-        DualVoiceNarrationRequest request,
-        InteractionDecision decision)
-    {
         try
         {
-            await dualVoiceCoordinator.SubmitAsync(request, CancellationToken.None).ConfigureAwait(false);
+            // Not awaited, by design. SubmitAsync never faults, and the slot is already reserved.
+            _ = dualVoiceCoordinator.SubmitAsync(request, CancellationToken.None);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
         {
+            // A narrator that cannot even accept the group must not fail the interaction. Settling the
+            // promise here keeps the slot closed instead of waiting for the admission timeout.
             logger.LogWarning(
-                "NARRATION_GROUP_SUBMIT_FAILED interactionId={InteractionId} errorType={ErrorType} correlationId={CorrelationId}",
+                "NARRATION_GROUP_RESERVE_FAILED interactionId={InteractionId} errorType={ErrorType} correlationId={CorrelationId}",
                 decision.DecisionId, exception.GetType().Name, decision.CorrelationId);
+            assistantSlot.TrySetResult(null);
         }
     }
 
     /// <summary>
-    /// Submits only the chat clip, for the cases where the assistant half is missing: the model failed,
-    /// its reply was rejected, or the reply could not be voiced.
+    /// Presents a role's own synthesis task under the shared "this clip may not exist" shape, so the
+    /// coordinator can treat a missing role and a failed role the same way.
     /// </summary>
-    private void SubmitChatOnlyAsync(
-        InteractionDecision decision,
-        Task<TextToSpeechResult>? chatAudio,
-        TimeSpan acceptedAtOffset)
-    {
-        if (chatAudio is null) return;
-        SubmitDualAsync(decision, chatAudio, null, acceptedAtOffset);
-    }
+    private static async Task<TextToSpeechResult?> AsOptionalAsync(Task<TextToSpeechResult> synthesis) =>
+        await synthesis.ConfigureAwait(false);
 
     private InteractionResult CreateResult(
         InteractionDecision decision,

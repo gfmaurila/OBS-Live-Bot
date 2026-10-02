@@ -141,15 +141,18 @@ public sealed class DualVoiceInteractionTests
     public async Task ModelFailure_StillSubmitsTheChatClipOnItsOwn()
     {
         var tts = new RecordingTtsProvider();
-        var coordinator = new RecordingDualVoiceCoordinator();
-        var result = await Run(
+        var coordinator = new RecordingDualVoiceCoordinator();        var result = await Run(
             ai: new FailingAiProvider(), tts: tts, coordinator: coordinator,
             mode: InteractionResponseMode.Voice, message: "!studio olá");
 
         Assert.Equal(InteractionStatus.Failed, result.Status);
         var group = Assert.Single(coordinator.Requests);
         Assert.NotNull(group.ChatAudio);
-        Assert.Null(group.AssistantAudio);
+        // The slot is still reserved and still closed. The promise settles with "no assistant clip" so
+        // the coordinator releases whatever was accepted after this one, instead of waiting out the
+        // admission timeout waiting for a reply that is never coming.
+        Assert.NotNull(group.AssistantAudio);
+        Assert.Null(await group.AssistantAudio!);
     }
 
     [Fact]
@@ -163,8 +166,8 @@ public sealed class DualVoiceInteractionTests
         Assert.Equal(InteractionStatus.Completed, result.Status);
         var group = Assert.Single(coordinator.Requests);
         Assert.NotNull(group.ChatAudio);
-        Assert.False((await group.ChatAudio!).Success);
-        Assert.True((await group.AssistantAudio!).Success);
+        Assert.False((await group.ChatAudio!)!.Success);
+        Assert.True((await group.AssistantAudio!)!.Success);
     }
 
     [Fact]
@@ -180,9 +183,9 @@ public sealed class DualVoiceInteractionTests
         Assert.Equal(InteractionStatus.Failed, result.Status);
         var group = Assert.Single(coordinator.Requests);
         Assert.NotNull(group.ChatAudio);
-        Assert.True((await group.ChatAudio!).Success);
+        Assert.True((await group.ChatAudio!)!.Success);
         Assert.NotNull(group.AssistantAudio);
-        Assert.False((await group.AssistantAudio!).Success);
+        Assert.False((await group.AssistantAudio!)!.Success);
     }
 
     [Fact]

@@ -26,6 +26,11 @@ internal sealed class RecordingDualVoiceCoordinator : IDualVoiceNarrationCoordin
         lock (_gate) _requests.Add(request);
         return Task.CompletedTask;
     }
+
+    // The automatic path is the only one the orchestrator may reach, so the escape hatch is recorded
+    // separately: a test asserting on Requests must never accidentally match a development test.
+    public Task SubmitDevelopmentTestAsync(DualVoiceNarrationRequest request, CancellationToken cancellationToken) =>
+        SubmitAsync(request, cancellationToken);
 }
 
 /// <summary>A coordinator that records submissions and can be made to fail, to test failure isolation.</summary>
@@ -38,6 +43,9 @@ internal sealed class FailingDualVoiceCoordinator : IDualVoiceNarrationCoordinat
         Attempts++;
         throw new InvalidOperationException("coordinator unavailable");
     }
+
+    public Task SubmitDevelopmentTestAsync(DualVoiceNarrationRequest request, CancellationToken cancellationToken) =>
+        SubmitAsync(request, cancellationToken);
 }
 
 /// <summary>A coordinator that never completes, used to prove the orchestrator does not block on it.</summary>
@@ -52,4 +60,7 @@ internal sealed class BlockingDualVoiceCoordinator : IDualVoiceNarrationCoordina
         Attempts++;
         return _gate.Task;
     }
+
+    public Task SubmitDevelopmentTestAsync(DualVoiceNarrationRequest request, CancellationToken cancellationToken) =>
+        SubmitAsync(request, cancellationToken);
 }

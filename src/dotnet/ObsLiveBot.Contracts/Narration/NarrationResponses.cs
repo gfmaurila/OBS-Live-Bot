@@ -65,6 +65,24 @@ public sealed record NarrationRecentResponse(
 
 public sealed record NarrationDevTestRequest(string Text);
 
+/// <summary>
+/// One isolated dual voice playback. The two texts are spoken by the two configured roles, in the
+/// same order a real interaction uses: the chat voice first, the assistant voice second.
+/// </summary>
+public sealed record NarrationDualVoiceDevTestRequest(string ChatText, string AssistantText);
+
+public sealed record NarrationDualVoiceDevTestResponse(
+    bool Accepted,
+    string? ErrorCode,
+    Guid InteractionId,
+    string CorrelationId,
+    long GroupSequence,
+    string TtsProvider,
+    string ChatVoice,
+    string AssistantVoice,
+    double? ChatAudioDurationSeconds,
+    double? AssistantAudioDurationSeconds);
+
 public sealed record NarrationDevTestResponse(
     bool Accepted,
     string? ErrorCode,

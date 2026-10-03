@@ -142,6 +142,48 @@ public sealed class InteractionEndpointTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task NarrationDualVoiceDevelopmentEndpoint_IsNotMappedInProduction()
+    {
+        await using var factory = new InteractionApiFactory("Production");
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/narration/dev/dual-voice", new { chatText = "chat", assistantText = "reply" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NarrationDualVoiceDevelopmentEndpoint_RefusesASimulatedVoice()
+    {
+        await using var factory = new InteractionApiFactory("Development");
+        using var client = factory.CreateClient();
+
+        // The development TTS provider only simulates audio. Accepting it would report a playback that
+        // was never really voiced, so the request is refused instead.
+        var response = await client.PostAsJsonAsync(
+            "/api/narration/dev/dual-voice", new { chatText = "chat", assistantText = "reply" });
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("REAL_TTS_UNAVAILABLE", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("", "reply")]
+    [InlineData("chat", "")]
+    [InlineData("   ", "reply")]
+    public async Task NarrationDualVoiceDevelopmentEndpoint_RejectsMissingText(string chat, string assistant)
+    {
+        await using var factory = new InteractionApiFactory("Development");
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/narration/dev/dual-voice", new { chatText = chat, assistantText = assistant });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("0")]
     [InlineData("101")]
@@ -172,6 +214,7 @@ public sealed class InteractionEndpointTests
         Assert.Contains("/api/narration/state", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/narration/recent", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/narration/dev/test", swagger, StringComparison.Ordinal);
+        Assert.Contains("/api/narration/dev/dual-voice", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/narration/mute", swagger, StringComparison.Ordinal);
         Assert.Contains("/api/narration/volume", swagger, StringComparison.Ordinal);
     }

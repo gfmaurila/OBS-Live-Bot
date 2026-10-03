@@ -445,6 +445,10 @@ public sealed class DualVoiceInteractionTests
             AssistantWasReadyAtSubmit = request.AssistantAudio?.IsCompletedSuccessfully ?? false;
             return Task.CompletedTask;
         }
+
+        // Never reachable from the orchestrator, which only has the automatic path.
+        public Task SubmitDevelopmentTestAsync(DualVoiceNarrationRequest request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the orchestrator must never use the development path.");
     }
 
     private class RecordingAiProvider(List<string>? timeline = null) : IAiInteractionProvider

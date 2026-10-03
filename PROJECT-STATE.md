@@ -40,7 +40,7 @@ Follow-up de segurança obrigatório registrado na Task10.1.1: a chave de transm
 Dívida técnica do OBS registrada e não reparada na Task10.1.1 (bindings de captura de áudio WASAPI obsoletos, microfone sem dispositivo, captura de áudio de jogo e gravação MKV de 0 bytes com output reportando ativo). Detalhes em [docs/OBS-INTEGRATION.md](docs/OBS-INTEGRATION.md). Esses itens não bloqueiam o E2E do Ollama Docker.
 
 ## Próxima ação executável
-Aguardar a revisão do analista e a autorização explícita para a fase audible da OBS-LIVE-BOT-10.2 (`Narration:AutoPlayInteractions=true` com restauração imediata para `false` ao final). Não iniciar Task11 sem solicitação explícita.
+Task10.2 concluído com aprovação e a autorização explícita para a fase audible da OBS-LIVE-BOT-10.2 (`Narration:AutoPlayInteractions=true` com restauração imediata para `false` ao final). Não iniciar Task11 sem solicitação explícita.
 
 ## Decisão arquitetural permanente
 O projeto adota `LOCAL FIRST`, `ZERO INFRASTRUCTURE COST`, `NO PREMATURE INFRASTRUCTURE` e `NO PREMATURE MICROSERVICES`. SQL Server não faz parte da stack obrigatória. EF Core permanece disponível somente quando houver necessidade concreta de persistência e sem provider obrigatório.

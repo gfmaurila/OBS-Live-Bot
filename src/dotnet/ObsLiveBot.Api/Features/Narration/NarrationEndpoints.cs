@@ -68,6 +68,26 @@ public static class NarrationEndpoints
                 .Produces<NarrationDevTestResponse>(StatusCodes.Status202Accepted)
                 .Produces<NarrationDevTestResponse>(StatusCodes.Status409Conflict)
                 .ProducesValidationProblem();
+
+            // Isolated dual voice playback. Development only, and it never changes the configured
+            // autoplay switch: the automatic chat interaction stays silent while this speaks.
+            endpoints.MapPost("/api/narration/dev/dual-voice", async (
+                    NarrationDualVoiceDevTestRequest request,
+                    ISender sender,
+                    CancellationToken cancellationToken) =>
+                {
+                    var response = (await sender.Send(new TestDualVoiceNarrationCommand(
+                        request.ChatText, request.AssistantText), cancellationToken)).Value;
+                    if (response.Accepted) return Results.Accepted("/api/narration/recent", response);
+                    return Results.Problem(
+                        title: "Dual voice test was not accepted.",
+                        detail: response.ErrorCode,
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+                })
+                .WithName("TestDualVoiceNarration")
+                .WithTags("Narration")
+                .Produces<NarrationDualVoiceDevTestResponse>(StatusCodes.Status202Accepted)
+                .ProducesValidationProblem();
         }
 
         return endpoints;

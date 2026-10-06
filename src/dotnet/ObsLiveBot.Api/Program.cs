@@ -6,6 +6,7 @@ using ObsLiveBot.Api.Errors;
 using ObsLiveBot.Api.Features.Obs.GetStatus;
 using ObsLiveBot.Api.Features.Obs.LiveState;
 using ObsLiveBot.Api.Features.Chat;
+using ObsLiveBot.Api.Features.ChatResponses;
 using ObsLiveBot.Api.Features.Interactions;
 using ObsLiveBot.Api.Features.Narration;
 using ObsLiveBot.Api.Features.YouTube.LiveDiscovery;
@@ -60,6 +61,7 @@ builder.Services.AddObsInfrastructure();
 builder.Services.AddLiveChatInfrastructure(builder.Configuration);
 builder.Services.AddInteractionInfrastructure(builder.Configuration);
 builder.Services.AddNarrationInfrastructure(builder.Configuration);
+builder.Services.AddChatResponseInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
@@ -106,6 +108,9 @@ app.MapGet(
         var narration = report.Entries.TryGetValue("narration", out var narrationEntry)
             ? narrationEntry.Status.ToString().ToLowerInvariant()
             : "unknown";
+        var chatResponses = report.Entries.TryGetValue("chatResponses", out var chatResponseEntry)
+            ? chatResponseEntry.Status.ToString().ToLowerInvariant()
+            : "unknown";
         var status = report.Status switch
         {
             HealthStatus.Healthy => "healthy",
@@ -114,7 +119,7 @@ app.MapGet(
         };
 
         return Results.Json(
-            new { service = "obs-live-bot", status, obs, chat, interactions, narration },
+            new { service = "obs-live-bot", status, obs, chat, interactions, narration, chatResponses },
             statusCode: report.Status == HealthStatus.Unhealthy
                 ? StatusCodes.Status503ServiceUnavailable
                 : StatusCodes.Status200OK);
@@ -125,6 +130,7 @@ app.MapObsLiveStateEndpoints();
 app.MapLiveChatEndpoints(app.Environment.IsDevelopment());
 app.MapInteractionEndpoints(app.Environment.IsDevelopment());
 app.MapNarrationEndpoints(app.Environment.IsDevelopment());
+app.MapChatResponseEndpoints(app.Environment.IsDevelopment());
 app.MapYouTubeLiveDiscoveryEndpoints();
 app.Run();
 

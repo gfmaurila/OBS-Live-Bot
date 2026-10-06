@@ -69,9 +69,31 @@ Twitch / YouTube / Kick
 
 SSN is an Infrastructure adapter, not a domain dependency. Domain/Application continue to depend on `ILiveChatProvider`; a future engine can replace it without changing chat, Interaction, Ollama, Piper or narration. `studioos.socialstream.json` contains the minimum public capture settings and is read from the external read-only mount. SSN simple capture does not require StudioOS OAuth, Google Cloud, official EventSub, a public Kick webhook, cookies, stream keys or secrets when the selected SSN version can read the source without them.
 
-Official platform APIs are an optional advanced mode. The existing public `studioos.providers.json` entries remain available; `officialApiEnabled` must be explicitly true before an official adapter starts. Missing/false means simple mode remains independent of developer app setup. Sending future text uses an `IChatResponseSender` boundary with per-platform implementations; it is not implemented here.
+Official platform APIs are an optional advanced mode. The existing public `studioos.providers.json` entries remain available; `officialApiEnabled` must be explicitly true before an official adapter starts. Missing/false means simple mode remains independent of developer app setup. Writing text uses the `IChatResponseSender` boundary with per-platform implementations.
 
-Audio interaction flow (Task10): `LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop -> Context Builder -> Ollama -> sanitizer -> Piper -> Narration Queue -> OBS`. A real YouTube-triggered execution completed and was audibly confirmed by the analyst. `AutoPlayInteractions` defaults to false and was returned to false after validation. Written replies are not implemented. Preserve identity as `Provider + ProviderUserId`; bot/self messages are excluded. SSN YouTube owner OAuth stays inside the isolated SSN container; Electron safeStorage/Secret Service protects owner tokens, while StudioOS receives normalized chat and public channel metadata. Google passwords never enter StudioOS.
+## Written chat responses (OBS-LIVE-BOT-11)
+
+```text
+InteractionCompletedNotification -> ChatResponseGatekeeper -> bounded queue, single reader
+  -> IChatResponseSender (SocialStreamNinja | Development) -> Social Stream Ninja page write
+  -> IChatResponseLedger (idempotency keys + delivered text)
+```
+
+Written chat responses are a capability of their own, registered through their own composition root
+(`AddChatResponseInfrastructure`) with their own named HTTP client, their own options and their own state.
+Capture and write are never coupled: a failing write cannot exhaust the capture connection pool, and
+writing stays available while reading is degraded. Domain and Application know only `IChatResponseSender`; SSN,
+HTTP, DOM and per-platform transports exist solely in Infrastructure.
+
+`ChatResponses:Enabled` is the single master switch and ships `false`; it is the only runtime-mutable setting
+and it is held in memory, so a restart always returns to the shipped disabled value. The write is queued
+behind a bounded single reader off the interaction path, idempotent by `provider|channel|interactionId`, and
+rate limited per channel and per user. Because a written reply returns through the capture path as an ordinary
+message, the account StudioOS posts from is the loop guard — the first echo teaches StudioOS that account and
+the text is never compared again for it — and the captured event is tagged `interaction.generatedByStudioOS`
+so the decision policy refuses it as `SelfMessage`. See [docs/CHAT-RESPONSES.md](CHAT-RESPONSES.md).
+
+Audio interaction flow (Task10): `LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop -> Context Builder -> Ollama -> sanitizer -> Piper -> Narration Queue -> OBS`. A real YouTube-triggered execution completed and was audibly confirmed by the analyst. `AutoPlayInteractions` defaults to false and was returned to false after validation. Written replies shipped disabled in Task11 and no reply has been written into a real live chat. Preserve identity as `Provider + ProviderUserId`; bot/self messages are excluded. SSN YouTube owner OAuth stays inside the isolated SSN container; Electron safeStorage/Secret Service protects owner tokens, while StudioOS receives normalized chat and public channel metadata. Google passwords never enter StudioOS.
 
 For YouTube simple mode, `authMode=oauth` means SSN owns the provider-controlled browser authorization and encrypted owner-token storage; StudioOS stores only public metadata. SSN 0.4.18's owner live discovery did not add a source in the validated environment; a public per-live URL was supplied through SSN's supported source API. Automatic discovery of each current live is not claimed or implemented. Linux secure storage uses Electron safeStorage backed by libsecret/Secret Service and GNOME Keyring. This keeps Google credentials out of StudioOS and leaves YouTube authorization failures isolated from Twitch and Kick.
 

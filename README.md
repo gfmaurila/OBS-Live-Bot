@@ -3,7 +3,7 @@
 Plataforma local para automação de live no OBS, IA/TTS opcional, Content Engine, Command Center Windows e backup/restore integral do ambiente OBS.
 
 ## Estado
-`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-10.1.2` estão concluídas. Task10 teve E2E real de áudio validado pelo YouTube e ouvido pelo analista: SSN `/live_chat` → SSE → interação → Ollama → Piper/WAV → fila → OBS. Task10.1 migrou o Ollama para Docker com modelo persistente e GPU validada, e a Task10.1.1 repetir esse E2E no runtime Docker também foi confirmado pelo analista, que ouviu o áudio real sem qualquer dependência do Ollama do Windows. A Task10.1.2 implementou a descoberta automática do YouTube live a partir da página pública `/streams` do canal, dispensando a URL manual por transmissão, e gerencia a fonte SSN canônica `youtube-vid-<videoId>` por meio de um reconciliador idempotente. A OBS-LIVE-BOT-10.2 implementa duas vozes por interação (Chat determinístico + Assistant gerado) com ordenação de grupo e síntese paralela, coberta por testes automatizados mas **sem reprodução audível validada**; ela aguarda autorização do analista para a fase audible. O autoplay permanece `false`; respostas escritas continuam fora de escopo. No ambiente headless testado, a source watch-page/classic não expôs chat confiavelmente, enquanto a rota oficial `live_chat` capturou mensagens reais; isso não é uma afirmação de falha universal do SSN. Dívida técnica de captura de áudio do OBS está registrada em [docs/OBS-INTEGRATION.md](docs/OBS-INTEGRATION.md).
+`OBS-LIVE-BOT-00` a `OBS-LIVE-BOT-11` estão concluídas. Task10 teve E2E real de áudio validado pelo YouTube e ouvido pelo analista: SSN `/live_chat` → SSE → interação → Ollama → Piper/WAV → fila → OBS. Task10.1 migrou o Ollama para Docker com modelo persistente e GPU validada, e a Task10.1.1 repetir esse E2E no runtime Docker também foi confirmado pelo analista, que ouviu o áudio real sem qualquer dependência do Ollama do Windows. A Task10.1.2 implementou a descoberta automática do YouTube live a partir da página pública `/streams` do canal, dispensando a URL manual por transmissão, e gerencia a fonte SSN canônica `youtube-vid-<videoId>` por meio de um reconciliador idempotente. A OBS-LIVE-BOT-10.2 implementa duas vozes por interação (Chat determinístico + Assistant gerado) com ordenação de grupo e síntese paralela. A OBS-LIVE-BOT-11 implementa a resposta escrita no chat como capacidade independente atrás da fronteira `IChatResponseSender`, com gate próprio, anti-loop por identidade, idempotência e isolamento de falha: ela **foi entregue e permaneceu desligada**, e nenhuma mensagem foi escrita em uma live real. O autoplay permanece `false`. No ambiente headless testado, a source watch-page/classic não expôs chat confiavelmente, enquanto a rota oficial `live_chat` capturou mensagens reais; isso não é uma afirmação de falha universal do SSN. Dívida técnica de captura de áudio do OBS está registrada em [docs/OBS-INTEGRATION.md](docs/OBS-INTEGRATION.md).
 
 ## Serviços locais
 
@@ -50,6 +50,13 @@ Use a senha local provisionada no ambiente; credenciais não são documentadas n
 | Narration | PUT | `/api/narration/mute` | `http://localhost:5080/api/narration/mute` |
 | Narration | PUT | `/api/narration/volume` | `http://localhost:5080/api/narration/volume` |
 | YouTube Live | GET | `/api/youtube/live-discovery` | `http://localhost:5080/api/youtube/live-discovery` |
+| Chat Responses | GET | `/api/chat-responses/providers` | `http://localhost:5080/api/chat-responses/providers` |
+| Chat Responses | GET | `/api/chat-responses/senders` | `http://localhost:5080/api/chat-responses/senders` |
+| Chat Responses | GET | `/api/chat-responses/settings` | `http://localhost:5080/api/chat-responses/settings` |
+| Chat Responses | PUT | `/api/chat-responses/settings` | `http://localhost:5080/api/chat-responses/settings` |
+| Chat Responses | GET | `/api/chat-responses/state` | `http://localhost:5080/api/chat-responses/state` |
+| Chat Responses | GET | `/api/chat-responses/recent` | `http://localhost:5080/api/chat-responses/recent` |
+| Chat Responses (Development) | POST | `/api/chat-responses/dev/send` | `http://localhost:5080/api/chat-responses/dev/send` |
 
 ## Captura simples de chat
 
@@ -173,6 +180,24 @@ A Task 08 adiciona `INarrationService` e um playback adapter sobre a conexão OB
 - **REAL OBS NARRATION: YES. OBS AUDIO PLAYBACK: não toca no dispositivo local por monitoramento (Monitor Off); nenhuma transmissão pública é iniciada.**
 
 Detalhes de lifecycle, segurança e limitações: `docs/NARRATION.md`.
+
+## Resposta escrita no chat
+
+A OBS-LIVE-BOT-11 implementa a escrita de texto no chat como capacidade própria, separada da captura e separada do áudio. Domain e Application conhecem apenas a fronteira `IChatResponseSender`; o Social Stream Ninja (SSN), HTTP e o DOM ficam só na Infrastructure, com client HTTP, options, DI e estado próprios. O sender real usa a única rota de escrita suportada pelo SSN 0.4.18, que não expõe comando de envio dedicado: `inspectSourcePage` → `interactSourcePage` fill → `interactSourcePage` pressKey Enter, com `confirm: true`.
+
+- **Gate explícito:** `ChatResponses:Enabled=false` na configuração versionada. É o único valor mutável em runtime, o override vive apenas na memória e um restart volta ao valor configurado — não existe estado em disco capaz de carregar "habilitado" através de um reboot. `ChatResponses:AllowDevelopmentSender=false` recusa o sender `Development`, que nunca entrega nada e por isso só pode ser escolha explícita, nunca um fallback silencioso.
+- **Anti-loop:** uma resposta escrita volta pela mesma captura de qualquer mensagem. O guardião de laço marca o eco na captura com `interaction.generatedByStudioOS`, que a política de decisão já trata como `SelfMessage`. A identidade do é a proteção primária e o texto é apenas o bootstrap do primeiro eco; a conta que entregou o primeiro eco é aprendida e, a partir daí, é reconhecida por identidade sozinha. O gatekeeper também recusa a própria conta do StudioOS, de forma independente do caminho de interação.
+- **Idempotência:** chave `provider|channel|chatResponseId` em ledger bounded; a chave é reservada antes de qualquer escrita e liberada quando a escrita falha, para que um erro transitório da plataforma não bloqueie permanentemente uma resposta.
+- **Isolamento de falha:** exceção, timeout, sender indisponível, fila cheia e falha de notificação nunca derrubam interação, áudio, narração, OBS ou captura. Nada no caminho automático lança exceção.
+- **Fila bounded de leitor único:** executada fora do caminho da interação, com teto por tentativa (`CommandTimeoutSeconds`). Quando a fila está cheia a resposta mais nova é recusada e o motivo é distinguido de writer parado.
+- **Retentativa fail-closed:** só condições comprovadamente anteriores a qualquer digitação são repetidas (`STALE_PAGE_REF`, página indisponível, janela indisponível). Depois que o fill é aceito, StudioOS não consegue saber se o Enter chegou à página, então a sequência nunca se repete: no máximo uma resposta é perdida e nenhuma é publicada duas vezes.
+- **Sem banco, EF Core, Redis, broker, cloud ou container novo.** Estado em memória bounded; o ledger não é persistido e um restart simplesmente recomeça limpo.
+
+Endpoints read-only de estado, histórico, senders e capacidades, mais `PUT /api/chat-responses/settings` e o endpoint de desenvolvimento `POST /api/chat-responses/dev/send` (só em Development, e ainda obedecendo o gate). `GET /health` expõe `chatResponses`; desligado é o estado saudável, e `Degraded` fica reservado para "habilitado porém incapaz de escrever". `GET /api/chat-responses/providers` reporta leitura e escrita separadas por plataforma, sem nunca inferir uma da outra.
+
+**O que não foi validado:** nenhuma mensagem foi escrita em uma live real. A entrega foi validada de ponta a ponta com o processo no ar e o gate desligado; ligar o gate para uma transmissão real é uma decisão do analista, não uma etapa de validação pendente.
+
+Detalhes de configuração, ordem dos gates e limitações: `docs/CHAT-RESPONSES.md`.
 
 ## Arquitetura
 C#/.NET 10 é o núcleo (ASP.NET Core, Vertical Slice, CQRS, MediatR oficial, Ardalis.Result, FluentValidation, Serilog, OpenAPI, Domain Events e Mapping). Python é especializado em IA/mídia. C++ é opcional para nativo/performance. n8n é orquestrador local.

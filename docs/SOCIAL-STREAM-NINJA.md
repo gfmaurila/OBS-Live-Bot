@@ -77,15 +77,23 @@ The active API process also reported the Twitch Credential Helper unavailable (`
 
 ## Response and narration boundary
 
-Future automation is:
+Automation is:
 
 ```text
 LiveChat -> InteractionDecisionPolicy -> cooldown / anti-spam / anti-loop
-  -> Ollama -> IChatResponseSender (platform text)
+  -> Ollama -> IChatResponseSender (platform text)   [Task11, ships disabled]
              -> Piper -> Narration Service -> OBS
 ```
 
-`IChatResponseSender` and per-platform senders are conceptual boundaries only; written replies remain unimplemented. Task10 connects eligible chat to Ollama/Piper/OBS audio only. Bot/self messages are excluded from the automatic decision pipeline to prevent loops. The controlled test completed and `AutoPlayInteractions` was returned to false.
+`IChatResponseSender` and its per-platform senders are implemented as of Task11. The write path uses SSN's
+page observation surface, which is the only write route SSN 0.4.18 supports: `inspectSourcePage` to find the
+composer, `interactSourcePage` `fill` to type the reply, `interactSourcePage` `pressKey` `Enter` to post it.
+It runs on its own named HTTP client and its own composition root, never through the capture-side command
+client, so a failing write cannot stop StudioOS from reading chat. `ChatResponses:Enabled` ships `false` and
+no reply has been written into a real live chat. Bot/self messages are excluded from the automatic decision
+pipeline to prevent loops, and the account StudioOS posts from is recognised by identity so a written reply
+can never be answered. Task10's controlled audio test completed and `AutoPlayInteractions` was returned to
+false. See [docs/CHAT-RESPONSES.md](CHAT-RESPONSES.md).
 
 ## Task09.4 partial validation record — 2026-09-29
 

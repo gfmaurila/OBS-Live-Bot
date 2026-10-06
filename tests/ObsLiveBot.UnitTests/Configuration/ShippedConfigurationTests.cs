@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using ObsLiveBot.Application.Abstractions;
 using ObsLiveBot.Infrastructure.Configuration;
+using ObsLiveBot.Infrastructure.ChatResponses;
 
 namespace ObsLiveBot.UnitTests.Configuration;
 
@@ -46,6 +47,33 @@ public sealed class ShippedConfigurationTests
     }
 
     [Fact]
+    public void ShippedAppsettings_PassesTheChatResponseOptionsValidator()
+    {
+        var chatResponses = BindChatResponses();
+
+        var result = new ChatResponseOptionsValidator().Validate(
+            ChatResponseOptions.SectionName, chatResponses);
+
+        Assert.True(result.Succeeded, string.Join("; ", result.Failures ?? []));
+    }
+
+    [Fact]
+    public void WrittenChatResponsesStayDisabledInTheShippedConfiguration()
+    {
+        var chatResponses = BindChatResponses();
+
+        // This is the switch that lets StudioOS type into a live chat on its own. Like the audible one it
+        // ships off, because the reply appears in front of an audience the moment it is enabled.
+        Assert.False(chatResponses.Enabled);
+
+        // The deterministic sender may be selected, but only explicitly - it is never a silent fallback,
+        // so shipping it as the default sender would be a fallback by another name.
+        Assert.Equal("SocialStreamNinja", chatResponses.Sender);
+        Assert.Empty(chatResponses.AllowedProviders);
+        Assert.Empty(chatResponses.SelfActorIdentities);
+    }
+
+    [Fact]
     public void AutomaticNarrationStaysDisabledInTheShippedConfiguration()
     {
         var (_, narration) = Bind();
@@ -83,12 +111,13 @@ public sealed class ShippedConfigurationTests
         Assert.Equal("{username} disse: {message}", narration.ChatVoice.UserNameFormat);
     }
 
+    private static ChatResponseOptions BindChatResponses() =>
+        Configuration().GetSection(ChatResponseOptions.SectionName).Get<ChatResponseOptions>()
+        ?? new ChatResponseOptions();
+
     private static (InteractionOptions Interactions, NarrationOptions Narration) Bind()
     {
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(RepositoryRoot())
-            .AddJsonFile("src/dotnet/ObsLiveBot.Api/appsettings.json", optional: false)
-            .Build();
+        var configuration = Configuration();
 
         var interactions = configuration
             .GetSection(InteractionOptions.SectionName).Get<InteractionOptions>() ?? new InteractionOptions();
@@ -96,6 +125,12 @@ public sealed class ShippedConfigurationTests
             .GetSection(NarrationOptions.SectionName).Get<NarrationOptions>() ?? new NarrationOptions();
         return (interactions, narration);
     }
+
+    private static IConfigurationRoot Configuration() =>
+        new ConfigurationBuilder()
+            .SetBasePath(RepositoryRoot())
+            .AddJsonFile("src/dotnet/ObsLiveBot.Api/appsettings.json", optional: false)
+            .Build();
 
     /// <summary>
     /// Walks up from the test binaries to the repository root so the real file is read, not a build copy.
